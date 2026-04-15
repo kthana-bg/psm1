@@ -32,7 +32,7 @@ section[data-testid="stSidebar"] {
 }
 
 h1 {
-    margin-top: 20px;
+    margin-top: 40px;
 }
 
 h1, h2, h3 {
