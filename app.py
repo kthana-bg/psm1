@@ -87,7 +87,7 @@ def analyze():
 st.markdown("<h1>VISIONMATE</h1>", unsafe_allow_html=True)
 
 # ================= 2-COLUMN LAYOUT (NO SCROLL) =================
-col1, col2 = st.columns([1.2, 1])
+col1, col2 = st.columns([1.6, 0.9])
 
 # ================= LIVE CAMERA (REAL BROWSER FEED) =================
 with col1:
