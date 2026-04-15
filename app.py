@@ -123,7 +123,7 @@ with col1:
             });
         </script>
         '
-        style="width:90%; height: 480px; object-fit: cover; border:none; ">
+        style="width:90%; height: 400px; object-fit: cover; border:none; ">
     </iframe>
     """, unsafe_allow_html=True)
 # ================= DASHBOARD =================
