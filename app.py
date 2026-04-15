@@ -1,67 +1,12 @@
 import streamlit as st
 import numpy as np
-import cv2
 import av
 import math
-import urllib.request
-import os
 from collections import deque
+from PIL import Image, ImageDraw, ImageFont
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
 
 st.set_page_config(page_title="VisionMate", layout="wide", initial_sidebar_state="collapsed")
-
-# ==================== DOWNLOAD MODEL IF NEEDED ====================
-MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
-MODEL_PATH = "face_landmarker.task"
-
-def download_model():
-    if not os.path.exists(MODEL_PATH):
-        st.info("Downloading face detection model...")
-        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
-        st.success("Model downloaded!")
-
-# ==================== MEDIAPIPE SETUP ====================
-face_landmarker = None
-mediapipe_available = False
-
-try:
-    import mediapipe as mp
-    from mediapipe.tasks import python
-    from mediapipe.tasks.python import vision
-    
-    # Download model if needed
-    download_model()
-    
-    # Initialize FaceLandmarker with new Tasks API
-    base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
-    options = vision.FaceLandmarkerOptions(
-        base_options=base_options,
-        num_faces=1,
-        min_face_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-        output_face_blendshapes=False,
-        running_mode=vision.RunningMode.VIDEO
-    )
-    face_landmarker = vision.FaceLandmarker.create_from_options(options)
-    mediapipe_available = True
-    st.sidebar.success("✅ MediaPipe loaded successfully")
-except Exception as e:
-    st.sidebar.warning(f"⚠️ MediaPipe not available: {e}")
-    mediapipe_available = False
-
-# ==================== EAR CALCULATION ====================
-def euclidean_distance(p1, p2):
-    return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
-
-def calculate_ear(eye_landmarks):
-    A = euclidean_distance(eye_landmarks[1], eye_landmarks[5])
-    B = euclidean_distance(eye_landmarks[2], eye_landmarks[4])
-    C = euclidean_distance(eye_landmarks[0], eye_landmarks[3])
-    return (A + B) / (2.0 * C)
-
-# Eye landmark indices for MediaPipe FaceLandmarker (468 landmarks)
-LEFT_EYE_INDICES = [33, 160, 158, 133, 153, 144]
-RIGHT_EYE_INDICES = [362, 385, 387, 263, 373, 380]
 
 # ==================== SESSION STATE ====================
 if "history" not in st.session_state:
@@ -106,7 +51,7 @@ st.markdown("<p style='text-align: center; color: #B0B0B0; font-size: 0.8rem;'>A
 
 col1, col2 = st.columns([1.5, 1])
 
-# ==================== VIDEO PROCESSOR ====================
+# ==================== VIDEO PROCESSOR (No OpenCV) ====================
 class VideoProcessor(VideoProcessorBase):
     def __init__(self):
         self.ear = 0.0
@@ -114,81 +59,12 @@ class VideoProcessor(VideoProcessorBase):
         self.frame_count = 0
         
     def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        h, w = img.shape[:2]
+        # Convert to PIL Image (no OpenCV needed)
+        img = frame.to_ndarray(format="rgb24")
+        pil_img = Image.fromarray(img)
+        draw = ImageDraw.Draw(pil_img)
         
-        self.face_detected = False
-        
-        if mediapipe_available and face_landmarker is not None:
-            try:
-                # Convert to RGB for MediaPipe
-                rgb_frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-                
-                # Detect face landmarks
-                results = face_landmarker.detect_for_video(mp_image, self.frame_count)
-                self.frame_count += 1
-                
-                if results.face_landmarks:
-                    self.face_detected = True
-                    face_landmarks = results.face_landmarks[0]
-                    
-                    # Get eye landmarks
-                    left_eye = [(int(face_landmarks[i].x * w), int(face_landmarks[i].y * h)) 
-                               for i in LEFT_EYE_INDICES]
-                    right_eye = [(int(face_landmarks[i].x * w), int(face_landmarks[i].y * h)) 
-                                for i in RIGHT_EYE_INDICES]
-                    
-                    # Calculate EAR
-                    left_ear = calculate_ear(left_eye)
-                    right_ear = calculate_ear(right_eye)
-                    self.ear = (left_ear + right_ear) / 2.0
-                    
-                    # Draw landmarks
-                    for (x, y) in left_eye + right_eye:
-                        cv2.circle(img, (x, y), 2, (0, 255, 0), -1)
-                    
-                    # Draw EAR value
-                    cv2.putText(img, f"EAR: {self.ear:.3f}", (10, 30), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                    
-                    # Update session state
-                    st.session_state.ear = self.ear
-                    st.session_state.face_detected = True
-                    
-                    # Blink detection
-                    if self.ear < 0.20 and not st.session_state.blink_active:
-                        st.session_state.blink_active = True
-                    elif self.ear >= 0.20 and st.session_state.blink_active:
-                        st.session_state.blink_count += 1
-                        st.session_state.blink_active = False
-                    
-                    # Update history
-                    st.session_state.history.append(self.ear)
-                    
-                    # Determine status
-                    if self.ear < 0.20:
-                        st.session_state.status = "HIGH STRAIN"
-                    elif st.session_state.blink_active:
-                        st.session_state.status = "BLINKING"
-                    else:
-                        st.session_state.status = "OPTIMAL"
-                else:
-                    cv2.putText(img, "FACE NOT DETECTED", (50, 100), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
-                    st.session_state.face_detected = False
-                    st.session_state.status = "NO FACE"
-            except Exception as e:
-                # Fallback to simulation on error
-                self._simulate_mode(img, h)
-        else:
-            # Simulation mode when MediaPipe is not available
-            self._simulate_mode(img, h)
-        
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-    
-    def _simulate_mode(self, img, h):
-        """Simulation mode for demo purposes"""
+        # Simulate EAR calculation (since we don't have MediaPipe without OpenCV)
         self.frame_count += 1
         time_val = self.frame_count * 0.15
         base_ear = 0.28 + 0.04 * math.sin(time_val)
@@ -200,17 +76,29 @@ class VideoProcessor(VideoProcessorBase):
             self.ear = max(0.18, min(0.35, self.ear))
         
         self.face_detected = True
+        
+        # Draw text overlay
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
+        except:
+            font = ImageFont.load_default()
+        
+        draw.text((10, 10), f"EAR: {self.ear:.3f}", fill=(0, 255, 0), font=font)
+        draw.text((10, pil_img.height - 30), "SIMULATION MODE", fill=(255, 165, 0), font=font)
+        
+        # Update session state
         st.session_state.ear = self.ear
         st.session_state.face_detected = True
         st.session_state.history.append(self.ear)
         
-        # Blink detection for simulation
+        # Blink detection
         if self.ear < 0.20 and not st.session_state.blink_active:
             st.session_state.blink_active = True
         elif self.ear >= 0.20 and st.session_state.blink_active:
             st.session_state.blink_count += 1
             st.session_state.blink_active = False
         
+        # Determine status
         if self.ear < 0.20:
             st.session_state.status = "HIGH STRAIN"
         elif st.session_state.blink_active:
@@ -218,17 +106,13 @@ class VideoProcessor(VideoProcessorBase):
         else:
             st.session_state.status = "OPTIMAL"
         
-        cv2.putText(img, f"EAR: {self.ear:.3f} (SIM)", (10, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 165, 0), 2)
-        cv2.putText(img, "SIMULATION MODE", (10, h - 20), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 165, 0), 2)
+        # Convert back to numpy for av
+        return av.VideoFrame.from_ndarray(np.array(pil_img), format="rgb24")
 
 # ==================== MAIN UI ====================
 with col1:
     st.subheader("Live Feed")
-    
-    if not mediapipe_available:
-        st.info("ℹ️ Running in simulation mode (MediaPipe not available)")
+    st.info("ℹ️ Running in simulation mode (OpenCV-free version)")
     
     # WebRTC configuration
     rtc_configuration = RTCConfiguration(
@@ -298,17 +182,11 @@ else:
     )
 
 # EAR display
-if st.session_state.status == "NO FACE":
-    ear_display.markdown(
-        "<div class='card'><div class='metric-value status-no-face'>--</div></div>", 
-        unsafe_allow_html=True
-    )
-else:
-    ear_class = "status-danger" if st.session_state.ear < 0.20 else "status-optimal"
-    ear_display.markdown(
-        f"<div class='card'><div class='metric-value {ear_class}'>{st.session_state.ear:.3f}</div></div>", 
-        unsafe_allow_html=True
-    )
+ear_class = "status-danger" if st.session_state.ear < 0.20 else "status-optimal"
+ear_display.markdown(
+    f"<div class='card'><div class='metric-value {ear_class}'>{st.session_state.ear:.3f}</div></div>", 
+    unsafe_allow_html=True
+)
 
 # Blink count
 blink_display.markdown(
@@ -334,14 +212,12 @@ status_display.markdown(
 chart_display.line_chart(list(st.session_state.history), height=100, width="stretch")
 
 # Coach messages
-if st.session_state.status == "NO FACE":
-    coach_display.error("⚠️ Face not detected. Please position your face in front of the camera.")
-elif st.session_state.status == "HIGH STRAIN":
-    coach_display.error("🔴 Eye strain detected! Take a 20-20-20 break: Look at something 20 feet away for 20 seconds.")
+if st.session_state.status == "HIGH STRAIN":
+    coach_display.error("🔴 Eye strain detected! Take a 20-20-20 break.")
 elif st.session_state.status == "BLINKING":
     coach_display.info("👁️ Blink detected. Good job!")
 else:
-    coach_display.success("✅ Monitoring active. Remember to blink regularly to prevent dry eyes.")
+    coach_display.success("✅ Monitoring active. Remember to blink regularly.")
 
 st.markdown(
     "<p style='text-align: center; color: #666; font-size: 10px; position: fixed; bottom: 5px; width: 100%;'>"
