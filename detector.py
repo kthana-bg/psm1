@@ -1,5 +1,6 @@
 import os
 os.environ["MEDIAPIPE_DISABLE_GPU"] = "1"
+os.environ["GLOG_minloglevel"] = "3"
 import cv2
 import numpy as np
 import mediapipe as mp
