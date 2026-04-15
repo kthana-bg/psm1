@@ -1,26 +1,38 @@
 import streamlit as st
 import numpy as np
 import cv2
-import mediapipe as mp
 import time
 from collections import deque
+import os
 
 st.set_page_config(page_title="VisionMate", layout="wide", initial_sidebar_state="collapsed")
 
-# ==================== FACE DETECTION SETUP ====================
-# Import mediapipe solutions explicitly (REQUIRED for proper initialization)
-mp_drawing = mp.solutions.drawing_utils
-mp_face_mesh = mp.solutions.face_mesh
+# ==================== MEDIAPIPE SETUP WITH FALLBACK ====================
+face_mesh = None
+mediapipe_available = False
 
-# Initialize Face Mesh
-face_mesh = mp_face_mesh.FaceMesh(
-    max_num_faces=1,
-    refine_landmarks=True,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
-)
+# Try importing MediaPipe with error handling
+try:
+    import mediapipe as mp
+    
+    # Try the legacy API
+    try:
+        mp_face_mesh = mp.solutions.face_mesh
+        face_mesh = mp_face_mesh.FaceMesh(
+            max_num_faces=1,
+            refine_landmarks=True,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
+        mediapipe_available = True
+    except Exception as e:
+        st.sidebar.warning(f"MediaPipe legacy API failed: {e}")
+        mediapipe_available = False
+except ImportError:
+    st.sidebar.error("MediaPipe not installed")
+    mediapipe_available = False
 
-# EAR calculation indices (MediaPipe Face Mesh)
+# ==================== EAR CALCULATION ====================
 LEFT_EYE = [362, 385, 387, 263, 373, 380]
 RIGHT_EYE = [33, 160, 158, 133, 153, 144]
 
@@ -48,6 +60,8 @@ if "status" not in st.session_state:
     st.session_state.status = "Initializing"
 if "face_detected" not in st.session_state:
     st.session_state.face_detected = False
+if "frame_count" not in st.session_state:
+    st.session_state.frame_count = 0
 
 # ==================== STYLING ====================
 st.markdown("""
@@ -77,9 +91,10 @@ st.markdown("<p style='text-align: center; color: #B0B0B0; font-size: 0.8rem;'>A
 
 col1, col2 = st.columns([1.5, 1])
 
-# ==================== LIVE FEED PROCESSING ====================
-def process_frame(frame):
-    """Process frame and return EAR, face_detected status, and annotated frame"""
+# ==================== FRAME PROCESSING ====================
+def process_frame_real(frame):
+    """Process frame using real MediaPipe"""
+    import mediapipe as mp
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = face_mesh.process(rgb_frame)
     
@@ -106,20 +121,49 @@ def process_frame(frame):
         for (x, y) in left_eye + right_eye:
             cv2.circle(frame, (x, y), 2, (0, 255, 0), -1)
         
-        # Draw EAR value on frame
         cv2.putText(frame, f"EAR: {ear:.3f}", (10, 30), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
     else:
-        # No face detected - draw warning
         cv2.putText(frame, "FACE NOT DETECTED", (50, 100), 
                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
     
     return frame, ear, face_detected
 
+def process_frame_simulation(frame):
+    """Simulated processing when MediaPipe is not available"""
+    import math
+    
+    h, w = frame.shape[:2]
+    st.session_state.frame_count += 1
+    
+    # Simulate realistic EAR pattern
+    time_val = st.session_state.frame_count * 0.15
+    base_ear = 0.28 + 0.04 * math.sin(time_val)
+    
+    # Random blink
+    if np.random.random() < 0.015:
+        ear = np.random.uniform(0.10, 0.18)
+        is_blink = True
+    else:
+        ear = base_ear + np.random.normal(0, 0.012)
+        ear = max(0.18, min(0.35, ear))
+        is_blink = False
+    
+    face_detected = True  # Always detected in simulation
+    
+    # Draw simulation indicator
+    cv2.putText(frame, f"EAR: {ear:.3f}", (10, 30), 
+               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    
+    return frame, ear, face_detected
+
+# ==================== MAIN UI ====================
 with col1:
     st.subheader("Live Feed")
     
-    # WebRTC or OpenCV Video Capture
+    if not mediapipe_available:
+        st.info("ℹ️ Running in simulation mode (MediaPipe not available)")
+    
     run = st.checkbox("Start Camera", value=False)
     FRAME_WINDOW = st.image([])
     
@@ -132,7 +176,10 @@ with col1:
                 break
             
             # Process frame
-            processed_frame, ear, face_detected = process_frame(frame)
+            if mediapipe_available:
+                processed_frame, ear, face_detected = process_frame_real(frame)
+            else:
+                processed_frame, ear, face_detected = process_frame_simulation(frame)
             
             # Update session state
             st.session_state.face_detected = face_detected
@@ -198,6 +245,7 @@ with col2:
         st.session_state.ear = 0.0
         st.session_state.status = "Initializing"
         st.session_state.face_detected = False
+        st.session_state.frame_count = 0
         st.rerun()
 
 # ==================== UPDATE DISPLAYS ====================
