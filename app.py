@@ -2,7 +2,6 @@ import os
 os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
 
 import streamlit as st
-import cv2
 import numpy as np
 import base64
 from detector import EyeStrainDetector
