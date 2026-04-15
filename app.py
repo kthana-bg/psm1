@@ -5,8 +5,8 @@ from collections import deque
 
 st.set_page_config(page_title="VisionMate", layout="wide", initial_sidebar_state="collapsed")
 
-VIDEO_HEIGHT = 470
-VIDEO_WIDTH = "140%"
+VIDEO_HEIGHT = 450
+VIDEO_WIDTH = "100%"
 
 if "history" not in st.session_state:
     st.session_state.history = deque([0.25] * 40, maxlen=40)
