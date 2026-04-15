@@ -1,13 +1,11 @@
 import streamlit as st
 import numpy as np
 import time
-import base64
 from collections import deque
 
 st.set_page_config(page_title="VisionMate", layout="wide", initial_sidebar_state="collapsed")
 
 VIDEO_HEIGHT = 400
-VIDEO_WIDTH = "100%"
 
 if "history" not in st.session_state:
     st.session_state.history = deque([0.25] * 40, maxlen=40)
@@ -17,6 +15,8 @@ if "frame_count" not in st.session_state:
     st.session_state.frame_count = 0
 if "blink_active" not in st.session_state:
     st.session_state.blink_active = False
+if "camera_active" not in st.session_state:
+    st.session_state.camera_active = False
 
 st.markdown(f"""
 <style>
@@ -33,7 +33,9 @@ h1 {{ color: #E0B0FF !important; font-weight: 300 !important; text-align: center
 .card {{ background: rgba(255,255,255,0.08); padding: 12px; border-radius: 16px; backdrop-filter: blur(10px); margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.1); }}
 .status-optimal {{ color: #00E676 !important; }} .status-danger {{ color: #FF1744 !important; }} .status-warning {{ color: #FFD600 !important; }}
 footer {{ display: none !important; }}
-iframe {{ border: none; border-radius: 16px; width: 100%; height: {VIDEO_HEIGHT}px; }}
+.stCamera {{ width: 100% !important; }}
+.stCamera > div > div {{ border-radius: 16px !important; overflow: hidden !important; }}
+video {{ transform: scaleX(-1) !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -45,61 +47,18 @@ col1, col2 = st.columns([1.5, 1])
 with col1:
     st.subheader("Live Feed")
     
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            body {{ margin: 0; padding: 0; background: rgba(0,0,0,0.3); }}
-            #live-video {{ 
-                width: 100%; 
-                height: auto;
-                max-height: {VIDEO_HEIGHT}px;
-                border-radius: 16px;
-                display: block;
-                transform: scaleX(-1);
-                -webkit-transform: scaleX(-1);
-            }}
-            .error {{ color: white; text-align: center; padding: 20px; font-family: sans-serif; }}
-        </style>
-    </head>
-    <body>
-        <div style="width:100%; border-radius:16px; overflow:hidden;">
-            <video id="live-video" autoplay playsinline muted></video>
-        </div>
-        <script>
-            (function() {{
-                const video = document.getElementById('live-video');
-                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {{
-                    navigator.mediaDevices.getUserMedia({{ 
-                        video: {{ 
-                            width: {{ ideal: 640 }}, 
-                            height: {{ ideal: 480 }},
-                            facingMode: "user"
-                        }} 
-                    }})
-                    .then(function(stream) {{
-                        video.srcObject = stream;
-                        video.onloadedmetadata = function(e) {{
-                            video.play();
-                        }};
-                    }})
-                    .catch(function(err) {{
-                        document.body.innerHTML = '<p class="error">Camera access denied. Please allow camera permissions.</p>';
-                    }});
-                }} else {{
-                    document.body.innerHTML = '<p class="error">Browser does not support camera access.</p>';
-                }}
-            }})();
-        </script>
-    </body>
-    </html>
-    """
+    # Use Streamlit's built-in camera input with auto-refresh simulation
+    # This creates a live effect by rapidly capturing
+    camera_image = st.camera_input(
+        "Live Camera",
+        label_visibility="collapsed",
+        key=f"camera_{st.session_state.frame_count}"
+    )
     
-    encoded_html = base64.b64encode(html_content.encode()).decode()
-    data_uri = f"data:text/html;base64,{encoded_html}"
-    
-    st.iframe(data_uri, height=VIDEO_HEIGHT)
+    # Auto-refresh trigger
+    if camera_image is None and st.session_state.camera_active:
+        time.sleep(0.5)
+        st.rerun()
 
 with col2:
     st.subheader("Analytics")
@@ -121,13 +80,23 @@ with col2:
     st.subheader("Coach")
     coach_display = st.empty()
     
-    if st.button("Reset", use_container_width=True):
+    # Controls
+    if st.button("Start Camera", use_container_width=True):
+        st.session_state.camera_active = True
+        st.rerun()
+    
+    if st.button("Stop Camera", use_container_width=True):
+        st.session_state.camera_active = False
+        st.rerun()
+    
+    if st.button("Reset Stats", use_container_width=True):
         st.session_state.history = deque([0.25] * 40, maxlen=40)
         st.session_state.blink_count = 0
         st.session_state.frame_count = 0
         st.session_state.blink_active = False
         st.rerun()
 
+# Simulation logic (replace with real detection when you have OpenCV)
 st.session_state.frame_count += 1
 import math
 
@@ -173,7 +142,8 @@ elif status == "BLINKING":
 else:
     coach_display.success("Monitoring active. Remember to blink regularly.")
 
-time.sleep(0.3)
-st.rerun()
+if st.session_state.camera_active:
+    time.sleep(0.3)
+    st.rerun()
 
 st.markdown("<p style='text-align: center; color: #666; font-size: 10px; position: fixed; bottom: 5px; width: 100%;'>VisionMate FYP | BAXU 3973 | UTeM</p>", unsafe_allow_html=True)
