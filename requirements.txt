@@ -1,4 +1,5 @@
+streamlit
 flask
 opencv-python-headless
-numpy
+numpy==1.24.4
 mediapipe==0.10.9
