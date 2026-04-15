@@ -119,7 +119,7 @@ with col1:
             });
         </script>
         '
-        style="width:100%; height: 320px; object-fit: cover; border:none; border-radius:16px;">
+        style="width:100%; height: 430px; object-fit: cover; border:none; border-radius:16px;">
     </iframe>
     """, unsafe_allow_html=True)
 # ================= DASHBOARD =================
