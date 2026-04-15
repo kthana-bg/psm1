@@ -1,5 +1,6 @@
 import os
 os.environ["MEDIAPIPE_DISABLE_GPU"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 os.environ["GLOG_minloglevel"] = "3"
 import cv2
 import numpy as np
@@ -15,7 +16,7 @@ except AttributeError:
 class EyeStrainDetector:
     def __init__(self):
         try:
-            self.face_mesh = mp_face_mesh.FaceMesh(
+            self.face_mesh = mp.solutions.face_mesh.FaceMesh(
                 static_image_mode=False,
                 max_num_faces=1,
                 refine_landmarks=False,
