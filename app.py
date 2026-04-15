@@ -5,32 +5,43 @@ import time
 # ================= PAGE CONFIG =================
 st.set_page_config(
     page_title="VisionMate",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-# ================= CSS (NO SCROLL CLEAN UI) =================
+# ================= CSS (YOUR STYLE + NO SCROLL FIX) =================
 st.markdown("""
 <style>
 .stApp {
-    overflow: hidden;
+    background: linear-gradient(rgba(26, 26, 46, 0.9), rgba(26, 26, 46, 0.9)), 
+                url("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1920&q=80");
+    background-size: cover;
+    background-attachment: fixed;
     height: 100vh;
+    overflow: hidden;
 }
 
 .block-container {
-    padding-top: 1rem;
+    padding-top: 0rem;
     padding-bottom: 0rem;
 }
 
-h1, h2, h3 {
-    text-align: center;
-    color: #E0B0FF;
+section[data-testid="stSidebar"] {
+    background: rgba(40, 20, 80, 0.6) !important;
+    backdrop-filter: blur(20px) !important;
 }
 
-.metric {
-    font-size: 45px;
-    font-weight: bold;
+h1, h2, h3 {
+    color: #E0B0FF !important;
+    font-weight: 300 !important;
     text-align: center;
+}
+
+.metric-value {
+    font-size: 42px;
     color: #BB86FC;
+    text-align: center;
+    font-weight: bold;
 }
 
 .card {
@@ -38,11 +49,16 @@ h1, h2, h3 {
     padding: 20px;
     border-radius: 20px;
     text-align: center;
+    backdrop-filter: blur(10px);
 }
 
-.status-ok { color: #00E676; font-size: 25px; }
-.status-bad { color: #FF1744; font-size: 25px; }
+.status-optimal { color: #00E676 !important; font-size: 22px; }
+.status-danger { color: #FF1744 !important; font-size: 22px; }
 
+.row {
+    display: flex;
+    gap: 15px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -53,13 +69,13 @@ if "blinks" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = [0.25] * 30
 
-# ================= SIMULATION LOGIC =================
-def get_eye_data():
+# ================= SIMULATED AI (since no cv2 allowed) =================
+def analyze():
     ear = np.random.uniform(0.18, 0.35)
 
     if ear < 0.22:
-        st.session_state.blinks += 1
         status = "HIGH STRAIN"
+        st.session_state.blinks += 1
     else:
         status = "OPTIMAL"
 
@@ -68,40 +84,64 @@ def get_eye_data():
     return ear, status
 
 # ================= TITLE =================
-st.markdown("<h1>👁 VISIONMATE DASHBOARD</h1>", unsafe_allow_html=True)
+st.markdown("<h1>VISIONMATE</h1>", unsafe_allow_html=True)
 
-# ================= LAYOUT (NO SCROLL FIX) =================
-col1, col2, col3 = st.columns(3)
+# ================= 2-COLUMN LAYOUT (NO SCROLL) =================
+col1, col2 = st.columns([1.5, 1])
 
-ear, status = get_eye_data()
-
-# ================= CARD 1 =================
+# ================= LIVE CAMERA (REAL BROWSER FEED) =================
 with col1:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("### EAR")
-    st.markdown(f"<div class='metric'>{ear:.2f}</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("### Live Camera Feed")
 
-# ================= CARD 2 =================
+    camera_html = """
+    <div style="display:flex; justify-content:center;">
+        <video id="video" autoplay playsinline style="width:100%; border-radius:16px;"></video>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            video.srcObject = stream;
+        });
+    </script>
+    """
+
+    st.components.v1.html(camera_html, height=420)
+
+# ================= DASHBOARD =================
 with col2:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("### BLINKS")
-    st.markdown(f"<div class='metric'>{st.session_state.blinks}</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
-# ================= CARD 3 =================
-with col3:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    ear, status = analyze()
 
-    if status == "OPTIMAL":
-        st.markdown("<div class='status-ok'>OPTIMAL</div>", unsafe_allow_html=True)
+    # CARD 1
+    st.markdown("""
+    <div class='card'>
+        <h3>EAR</h3>
+        <div class='metric-value'>%.2f</div>
+    </div>
+    """ % ear, unsafe_allow_html=True)
+
+    st.write("")
+
+    # CARD 2
+    st.markdown(f"""
+    <div class='card'>
+        <h3>Blinks</h3>
+        <div class='metric-value'>{st.session_state.blinks}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.write("")
+
+    # CARD 3
+    if status == "HIGH STRAIN":
+        st.markdown(f"<div class='card status-danger'>HIGH STRAIN</div>", unsafe_allow_html=True)
     else:
-        st.markdown("<div class='status-bad'>HIGH STRAIN</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='card status-optimal'>OPTIMAL</div>", unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ================= GRAPH =================
-st.line_chart(st.session_state.history, height=200)
+    st.line_chart(st.session_state.history, height=180)
 
 # ================= AUTO REFRESH =================
 time.sleep(1)
