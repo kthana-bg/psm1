@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 import base64
 from detector import EyeStrainDetector
+import os
+os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
 
 app = Flask(__name__)
 detector = EyeStrainDetector()
