@@ -44,15 +44,13 @@ footer {{ display: none !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1>VISIONMATE</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #B0B0B0; font-size: 0.8rem;'>AI Eye-Strain Monitor and Ergonomic Coach</p>", unsafe_allow_html=True)
+st.markdown("<br><h1>VISIONMATE</h1>", unsafe_allow_html=True)
 
 col1, col2 = st.columns([1.5, 1])
 
 with col1:
     st.subheader("Live Feed")
     
-    # Change height here too (match VIDEO_HEIGHT)
     st.components.v1.html(f"""
     <div style="width:100%; border-radius:16px; overflow:hidden; background:rgba(0,0,0,0.3);">
         <video id="live-video" autoplay playsinline muted style="width:100%; height:auto; max-height:{VIDEO_HEIGHT}px; display:block;"></video>
@@ -112,7 +110,6 @@ with col2:
         st.session_state.blink_active = False
         st.rerun()
 
-# Simulation logic
 st.session_state.frame_count += 1
 import math
 
@@ -160,5 +157,3 @@ else:
 
 time.sleep(0.3)
 st.rerun()
-
-st.markdown("<p style='text-align: center; color: #666; font-size: 10px; position: fixed; bottom: 5px; width: 100%;'>VisionMate FYP | BAXU 3973 | UTeM</p>", unsafe_allow_html=True)
