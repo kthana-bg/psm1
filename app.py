@@ -108,8 +108,20 @@ with col1:
     </script>
     """
 
-    st.components.v1.html(camera_html, height=420)
-
+   st.markdown("""
+    <iframe
+        srcdoc='
+        <video autoplay playsinline style="width:100%; border-radius:16px;"></video>
+        <script>
+            navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                document.querySelector("video").srcObject = stream;
+            });
+        </script>
+        '
+        style="width:100%; height:420px; border:none; border-radius:16px;">
+    </iframe>
+    """, unsafe_allow_html=True)
 # ================= DASHBOARD =================
 with col2:
 
