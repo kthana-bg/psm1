@@ -44,8 +44,7 @@ footer {{ display: none !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1>VISIONMATE</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #B0B0B0; font-size: 0.8rem;'>AI Eye-Strain Monitor and Ergonomic Coach</p>", unsafe_allow_html=True)
+st.markdown("<b><h1>VISIONMATE</h1></b>", unsafe_allow_html=True)
 
 col1, col2 = st.columns([1.5, 1])
 
