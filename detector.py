@@ -1,3 +1,5 @@
+import os
+os.environ["MEDIAPIPE_DISABLE_GPU"] = "1"
 import cv2
 import numpy as np
 import mediapipe as mp
@@ -13,6 +15,7 @@ class EyeStrainDetector:
     def __init__(self):
         try:
             self.face_mesh = mp_face_mesh.FaceMesh(
+                static_image_mode=False,
                 max_num_faces=1,
                 refine_landmarks=True,
                 min_detection_confidence=0.5,
