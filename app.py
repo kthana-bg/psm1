@@ -25,11 +25,9 @@ detector = st.session_state.detector
 class VideoProcessor:
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-
+        img = cv2.resize(img, (640, 480))
         img = cv2.flip(img, 1)
-
         ear, _, annotated = detector.process_frame(img)
-
         blinks = detector.update_blink_state(ear)
 
         # Status logic
