@@ -29,7 +29,7 @@ h1 { color: #E0B0FF !important; font-weight: 300 !important; text-align: center;
 .card { background: rgba(255,255,255,0.08); padding: 12px; border-radius: 16px; backdrop-filter: blur(10px); margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.1); }
 .status-optimal { color: #00E676 !important; } .status-danger { color: #FF1744 !important; } .status-warning { color: #FFD600 !important; }
 footer { display: none !important; }
-#live-video { width: 100%; border-radius: 16px; background: rgba(0,0,0,0.3); max-height: 50vh; object-fit: cover; }
+#live-video { width: 100%; border-radius: 16px; background: rgba(0,0,0,0.3); object-fit: cover; }
 </style>
 """, unsafe_allow_html=True)
 
