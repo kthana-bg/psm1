@@ -1,60 +1,57 @@
 import streamlit as st
 import cv2
 import numpy as np
-import av
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
+import base64
 from detector import EyeStrainDetector
-from aiortc.contrib.media import MediaBlackhole
-
-def get_ice_servers():
-    return [
-        {"urls": ["stun:stun.l.google.com:19302"]},
-        {"urls": ["stun:stun1.l.google.com:19302"]}
-    ]
 
 st.set_page_config(page_title="VisionMate", layout="wide")
 
-st.title("VisionMate")
+st.title("👁 VisionMate - Eye Strain Monitor")
 
-if "detector" not in st.session_state:
-    st.session_state.detector = EyeStrainDetector()
+detector = EyeStrainDetector()
 
-detector = st.session_state.detector
+# ---------------- JS CAMERA ----------------
+st.markdown("""
+<video id="video" autoplay style="width: 100%; max-width: 600px;"></video>
+<canvas id="canvas" style="display:none;"></canvas>
 
+<script>
+const video = document.getElementById('video');
 
-class VideoProcessor:
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        img = cv2.resize(img, (640, 480))
-        img = cv2.flip(img, 1)
-        ear, _, annotated = detector.process_frame(img)
-        blinks = detector.update_blink_state(ear)
+navigator.mediaDevices.getUserMedia({ video: true })
+.then(stream => {
+    video.srcObject = stream;
+});
 
-        # Status logic
-        if ear < 0.3:
-            status = "HIGH STRAIN"
-            color = (0, 0, 255)
-        else:
-            status = "NORMAL"
-            color = (0, 255, 0)
+async function sendFrame() {
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
 
-        cv2.putText(annotated, f"EAR: {ear:.2f}", (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+    canvas.width = 640;
+    canvas.height = 480;
 
-        cv2.putText(annotated, f"Blinks: {blinks}", (20, 80),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+    ctx.drawImage(video, 0, 0, 640, 480);
 
-        cv2.putText(annotated, f"Status: {status}", (20, 120),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+    const data = canvas.toDataURL('image/jpeg');
 
-        return av.VideoFrame.from_ndarray(annotated, format="bgr24")
+    const response = await fetch("", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({image: data})
+    });
+}
 
+setInterval(sendFrame, 500);
+</script>
+""", unsafe_allow_html=True)
 
-webrtc_streamer(
-    key="visionmate",
-    mode=WebRtcMode.SENDRECV,
-    video_processor_factory=VideoProcessor,
-    rtc_configuration={"iceServers": get_ice_servers()},
-    media_stream_constraints={"video": True, "audio": False},
-    async_processing=True
-)
+# ---------------- STREAMLIT PROCESSING ----------------
+import json
+
+if "result" not in st.session_state:
+    st.session_state.result = 0.0
+
+uploaded = st.text_input("Frame (auto)")
+
+# fallback UI display
+st.write("Waiting for camera frames...")
