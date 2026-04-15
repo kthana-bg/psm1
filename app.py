@@ -5,9 +5,8 @@ from collections import deque
 
 st.set_page_config(page_title="VisionMate", layout="wide", initial_sidebar_state="collapsed")
 
-# CONFIGURABLE VIDEO SIZE - Change these values
-VIDEO_HEIGHT = 400  # Change this: 300, 400, 500, 600, etc.
-VIDEO_WIDTH = "100%"  # Change this: "100%", "80%", "600px", etc.
+VIDEO_HEIGHT = 500
+VIDEO_WIDTH = "120%"
 
 if "history" not in st.session_state:
     st.session_state.history = deque([0.25] * 40, maxlen=40)
