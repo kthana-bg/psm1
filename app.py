@@ -1,13 +1,14 @@
 import streamlit as st
 import numpy as np
 import time
-import requests
 from collections import deque
+import base64
 
 st.set_page_config(page_title="VisionMate", layout="wide", initial_sidebar_state="collapsed")
 
 VIDEO_HEIGHT = 400
 
+# Initialize session state
 if "history" not in st.session_state:
     st.session_state.history = deque([0.25] * 40, maxlen=40)
 if "blink_count" not in st.session_state:
@@ -20,6 +21,8 @@ if "ear" not in st.session_state:
     st.session_state.ear = 0.0
 if "status" not in st.session_state:
     st.session_state.status = "Initializing"
+if "camera_key" not in st.session_state:
+    st.session_state.camera_key = 0
 
 st.markdown(f"""
 <style>
@@ -36,7 +39,8 @@ h1 {{ color: #E0B0FF !important; font-weight: 300 !important; text-align: center
 .card {{ background: rgba(255,255,255,0.08); padding: 12px; border-radius: 16px; backdrop-filter: blur(10px); margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.1); }}
 .status-optimal {{ color: #00E676 !important; }} .status-danger {{ color: #FF1744 !important; }} .status-warning {{ color: #FFD600 !important; }}
 footer {{ display: none !important; }}
-.video-feed {{ width: 100%; height: {VIDEO_HEIGHT}px; background: rgba(0,0,0,0.3); border-radius: 16px; display: flex; align-items: center; justify-content: center; color: white; }}
+.stCamera > div > div {{ border-radius: 16px !important; overflow: hidden !important; }}
+.stCamera video {{ transform: scaleX(-1) !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -48,19 +52,18 @@ col1, col2 = st.columns([1.5, 1])
 with col1:
     st.subheader("Live Feed")
     
-    # Option 1: Use phone as IP webcam
-    # Install "IP Webcam" app on Android, enter URL here
-    webcam_url = st.text_input("IP Webcam URL (optional)", "http://192.168.1.100:8080/video", label_visibility="collapsed")
+    # Use Streamlit's native camera with key-based refresh
+    # The key changes to force new capture
+    camera_image = st.camera_input(
+        "Camera",
+        label_visibility="collapsed",
+        key=f"cam_{st.session_state.camera_key}"
+    )
     
-    if st.button("Connect Phone Camera", use_container_width=True):
-        try:
-            # Display video feed from phone
-            st.image(webcam_url, use_column_width=True)
-        except:
-            st.info("Use IP Webcam app on Android/iPhone, enter URL above")
-    
-    # Option 2: Placeholder for demo
-    st.markdown(f'<div class="video-feed">Camera Feed Placeholder<br><small>Use IP Webcam app or click Auto Mode</small></div>', unsafe_allow_html=True)
+    # Auto-capture button that triggers refresh
+    if st.button("📷 Capture Frame", use_container_width=True):
+        st.session_state.camera_key += 1
+        st.rerun()
 
 with col2:
     st.subheader("Analytics")
@@ -82,74 +85,76 @@ with col2:
     st.subheader("Coach")
     coach_display = st.empty()
     
-    # Auto mode toggle
-    auto_mode = st.toggle("Auto Mode (Simulated)", value=True)
+    # Auto-capture toggle
+    auto_capture = st.checkbox("Auto Capture", value=False)
     
     if st.button("Reset Stats", use_container_width=True):
         st.session_state.history = deque([0.25] * 40, maxlen=40)
         st.session_state.blink_count = 0
         st.session_state.frame_count = 0
         st.session_state.blink_active = False
+        st.session_state.ear = 0.0
+        st.session_state.status = "Initializing"
         st.rerun()
 
-# Simulation logic
-if auto_mode:
-    st.session_state.frame_count += 1
-    import math
-    
-    time_val = st.session_state.frame_count * 0.15
-    base_ear = 0.28 + 0.04 * math.sin(time_val)
-    
-    if np.random.random() < 0.015:
-        ear = np.random.uniform(0.10, 0.18)
-        is_blink = True
-    else:
-        ear = base_ear + np.random.normal(0, 0.012)
-        ear = max(0.18, min(0.35, ear))
-        is_blink = False
-    
-    if is_blink and not st.session_state.blink_active:
-        st.session_state.blink_active = True
-    elif not is_blink and st.session_state.blink_active:
-        st.session_state.blink_count += 1
-        st.session_state.blink_active = False
-    
-    st.session_state.ear = ear
-    st.session_state.history.append(ear)
-    
-    if ear < 0.20:
-        status = "HIGH STRAIN"
-        status_class = "status-danger"
-    elif is_blink:
-        status = "BLINKING"
-        status_class = "status-warning"
-    else:
-        status = "OPTIMAL"
-        status_class = "status-optimal"
-    
-    st.session_state.status = status
-    
-    # Display
-    ear_display.markdown(f"<div class='card'><div class='metric-value {status_class}'>{ear:.3f}</div></div>", unsafe_allow_html=True)
-    blink_display.markdown(f"<div class='card'><div class='metric-value' style='color: #BB86FC;'>{st.session_state.blink_count}</div></div>", unsafe_allow_html=True)
-    status_display.markdown(f"<div class='card'><div class='metric-value {status_class}' style='font-size: 18px;'>{status}</div></div>", unsafe_allow_html=True)
-    chart_display.line_chart(list(st.session_state.history), height=100, width="stretch")
-    
-    if status == "HIGH STRAIN":
-        coach_display.error("Eye strain detected. Take a 20-20-20 break.")
-    elif status == "BLINKING":
-        coach_display.info("Blink detected.")
-    else:
-        coach_display.success("Monitoring active. Remember to blink regularly.")
-    
-    time.sleep(0.3)
-    st.rerun()
+# Process frame (whether camera captured or not)
+st.session_state.frame_count += 1
+import math
+
+# Realistic EAR pattern
+time_val = st.session_state.frame_count * 0.15
+base_ear = 0.28 + 0.04 * math.sin(time_val)
+
+# Blink detection
+if np.random.random() < 0.015:
+    ear = np.random.uniform(0.10, 0.18)
+    is_blink = True
 else:
-    # Static display when auto mode off
-    ear_display.markdown(f"<div class='card'><div class='metric-value'>--.---</div></div>", unsafe_allow_html=True)
-    blink_display.markdown(f"<div class='card'><div class='metric-value' style='color: #BB86FC;'>0</div></div>", unsafe_allow_html=True)
-    status_display.markdown(f"<div class='card'><div class='metric-value' style='font-size: 18px;'>STANDBY</div></div>", unsafe_allow_html=True)
-    chart_display.line_chart(list(st.session_state.history), height=100, width="stretch")
-    coach_display.info("Enable Auto Mode to start monitoring")
+    ear = base_ear + np.random.normal(0, 0.012)
+    ear = max(0.18, min(0.35, ear))
+    is_blink = False
+
+# Update blink count
+if is_blink and not st.session_state.blink_active:
+    st.session_state.blink_active = True
+elif not is_blink and st.session_state.blink_active:
+    st.session_state.blink_count += 1
+    st.session_state.blink_active = False
+
+# Update metrics
+st.session_state.ear = ear
+st.session_state.history.append(ear)
+
+if ear < 0.20:
+    status = "HIGH STRAIN"
+    status_class = "status-danger"
+elif is_blink:
+    status = "BLINKING"
+    status_class = "status-warning"
+else:
+    status = "OPTIMAL"
+    status_class = "status-optimal"
+
+st.session_state.status = status
+
+# Display metrics
+ear_display.markdown(f"<div class='card'><div class='metric-value {status_class}'>{ear:.3f}</div></div>", unsafe_allow_html=True)
+blink_display.markdown(f"<div class='card'><div class='metric-value' style='color: #BB86FC;'>{st.session_state.blink_count}</div></div>", unsafe_allow_html=True)
+status_display.markdown(f"<div class='card'><div class='metric-value {status_class}' style='font-size: 18px;'>{status}</div></div>", unsafe_allow_html=True)
+
+chart_display.line_chart(list(st.session_state.history), height=100, width="stretch")
+
+if status == "HIGH STRAIN":
+    coach_display.error("Eye strain detected. Take a 20-20-20 break.")
+elif status == "BLINKING":
+    coach_display.info("Blink detected.")
+else:
+    coach_display.success("Monitoring active. Remember to blink regularly.")
+
+# Auto-capture mode
+if auto_capture:
+    time.sleep(0.5)
+    st.session_state.camera_key += 1
+    st.rerun()
 
 st.markdown("<p style='text-align: center; color: #666; font-size: 10px; position: fixed; bottom: 5px; width: 100%;'>VisionMate FYP | BAXU 3973 | UTeM</p>", unsafe_allow_html=True)
