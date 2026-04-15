@@ -31,6 +31,10 @@ section[data-testid="stSidebar"] {
     backdrop-filter: blur(20px) !important;
 }
 
+h1 {
+    margin-top: 20px;
+}
+
 h1, h2, h3 {
     color: #E0B0FF !important;
     font-weight: 300 !important;
