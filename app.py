@@ -88,7 +88,7 @@ def analyze():
     return ear, status
 
 # ================= TITLE =================
-st.markdown("<h1>VISIONMATE</h1>", unsafe_allow_html=True)
+st.markdown("<br><br><h1>VISIONMATE</h1>", unsafe_allow_html=True)
 
 # ================= 2-COLUMN LAYOUT (NO SCROLL) =================
 col1, col2 = st.columns([1.4, 0.8])
