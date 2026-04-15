@@ -26,7 +26,7 @@ html, body, [data-testid="stAppViewContainer"] {{ height: 100vh; overflow: hidde
     background-size: cover;
 }}
 .block-container {{ padding: 0.5rem 1rem; height: 100vh; overflow: hidden; }}
-h1 {{ color: #E0B0FF !important; font-weight: 300 !important; text-align: center; margin: 0; font-size: 1.5rem; }}
+h1 {{ color: #E0B0FF !important; font-weight: 400 !important; text-align: center; margin: 0; font-size: 1.5rem; }}
 .metric-value {{ font-size: 36px; color: #BB86FC; text-align: center; font-weight: bold; }}
 .metric-label {{ font-size: 10px; opacity: 0.7; text-align: center; text-transform: uppercase; margin-bottom: 4px; }}
 .card {{ background: rgba(255,255,255,0.08); padding: 12px; border-radius: 16px; backdrop-filter: blur(10px); margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.1); }}
@@ -44,7 +44,7 @@ footer {{ display: none !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<b><h1>VISIONMATE</h1></b>", unsafe_allow_html=True)
+st.markdown("<h1>VISIONMATE</h1>", unsafe_allow_html=True)
 
 col1, col2 = st.columns([1.5, 1])
 
