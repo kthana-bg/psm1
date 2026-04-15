@@ -1,37 +1,54 @@
-from flask import Flask, render_template, Response, request, jsonify
+import streamlit as st
 import cv2
 import numpy as np
-import base64
+import av
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
 from detector import EyeStrainDetector
-import os
-os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
 
-app = Flask(__name__)
-detector = EyeStrainDetector()
+st.set_page_config(page_title="VisionMate", layout="wide")
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+st.title("👁 VisionMate - Eye Strain Monitor")
+
+if "detector" not in st.session_state:
+    st.session_state.detector = EyeStrainDetector()
+
+detector = st.session_state.detector
 
 
-@app.route('/process_frame', methods=['POST'])
-def process_frame():
-    data = request.json['image']
+class VideoProcessor:
+    def recv(self, frame):
+        img = frame.to_ndarray(format="bgr24")
 
-    # Decode base64 image
-    encoded_data = data.split(',')[1]
-    nparr = np.frombuffer(base64.b64decode(encoded_data), np.uint8)
-    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        img = cv2.flip(img, 1)
 
-    # Process frame
-    ear, _, annotated = detector.process_frame(frame)
+        ear, _, annotated = detector.process_frame(img)
 
-    # Encode back to base64
-    _, buffer = cv2.imencode('.jpg', annotated)
-    jpg_as_text = base64.b64encode(buffer).decode('utf-8')
+        blinks = detector.update_blink_state(ear)
 
-    return jsonify({
-        "image": "data:image/jpeg;base64," + jpg_as_text,
-        "ear": float(ear)
-    })
+        # Status logic
+        if ear < 0.3:
+            status = "HIGH STRAIN"
+            color = (0, 0, 255)
+        else:
+            status = "NORMAL"
+            color = (0, 255, 0)
 
+        cv2.putText(annotated, f"EAR: {ear:.2f}", (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+
+        cv2.putText(annotated, f"Blinks: {blinks}", (20, 80),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+
+        cv2.putText(annotated, f"Status: {status}", (20, 120),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+
+        return av.VideoFrame.from_ndarray(annotated, format="bgr24")
+
+
+webrtc_streamer(
+    key="visionmate",
+    mode=WebRtcMode.SENDRECV,
+    video_processor_factory=VideoProcessor,
+    media_stream_constraints={"video": True, "audio": False},
+    async_processing=True
+)
