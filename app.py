@@ -46,7 +46,7 @@ h1, h2, h3 {
 
 .card {
     background: rgba(255,255,255,0.08);
-    padding: 20px;
+    padding: 10px;
     border-radius: 20px;
     text-align: center;
     backdrop-filter: blur(10px);
@@ -119,7 +119,7 @@ with col1:
             });
         </script>
         '
-        style="width:100%; height: 490px; object-fit: cover; border:none; border-radius:16px;">
+        style="width:100%; height: 520px; object-fit: cover; border:none; border-radius:16px;">
     </iframe>
     """, unsafe_allow_html=True)
 # ================= DASHBOARD =================
