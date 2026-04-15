@@ -4,7 +4,7 @@ import av
 import math
 from collections import deque
 from PIL import Image, ImageDraw, ImageFont
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration, WebRtcMode
 
 st.set_page_config(page_title="VisionMate", layout="wide", initial_sidebar_state="collapsed")
 
@@ -122,7 +122,7 @@ with col1:
     # Start WebRTC streamer
     webrtc_ctx = webrtc_streamer(
         key="visionmate",
-        mode="SENDRECV",
+        mode=WebRtcMode.SENDRECV,
         rtc_configuration=rtc_configuration,
         video_processor_factory=VideoProcessor,
         media_stream_constraints={"video": True, "audio": False},
