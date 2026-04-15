@@ -4,10 +4,17 @@ import numpy as np
 import av
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
 from detector import EyeStrainDetector
+from aiortc.contrib.media import MediaBlackhole
+
+def get_ice_servers():
+    return [
+        {"urls": ["stun:stun.l.google.com:19302"]},
+        {"urls": ["stun:stun1.l.google.com:19302"]}
+    ]
 
 st.set_page_config(page_title="VisionMate", layout="wide")
 
-st.title("👁 VisionMate - Eye Strain Monitor")
+st.title("VisionMate")
 
 if "detector" not in st.session_state:
     st.session_state.detector = EyeStrainDetector()
@@ -49,6 +56,7 @@ webrtc_streamer(
     key="visionmate",
     mode=WebRtcMode.SENDRECV,
     video_processor_factory=VideoProcessor,
+    rtc_configuration={"iceServers": get_ice_servers()},
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True
 )
