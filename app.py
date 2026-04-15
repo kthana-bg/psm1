@@ -99,7 +99,7 @@ with col1:
 
     camera_html = """
     <div style="display:flex; justify-content:center;">
-        <video id="video" autoplay playsinline style="width:100%; border-radius:16px;"></video>
+        <video id="video" autoplay playsinline style="width:90%; border-radius:16px;"></video>
     </div>
 
     <script>
@@ -115,7 +115,7 @@ with col1:
     st.markdown("""
     <iframe 
         srcdoc='
-        <video autoplay playsinline style="width:90%; border-radius:16px;"></video>
+        <video autoplay playsinline style="width:100%; border-radius:16px;"></video>
         <script>
             navigator.mediaDevices.getUserMedia({ video: true })
             .then(stream => {
