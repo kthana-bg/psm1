@@ -4,7 +4,6 @@ import cv2
 import mediapipe as mp
 import time
 from collections import deque
-from scipy.spatial import distance as dist
 
 st.set_page_config(page_title="VisionMate", layout="wide", initial_sidebar_state="collapsed")
 
@@ -21,11 +20,15 @@ face_mesh = mp_face_mesh.FaceMesh(
 LEFT_EYE = [362, 385, 387, 263, 373, 380]
 RIGHT_EYE = [33, 160, 158, 133, 153, 144]
 
+def euclidean_distance(p1, p2):
+    """Calculate Euclidean distance between two points using NumPy"""
+    return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+
 def calculate_ear(eye_landmarks):
-    """Calculate Eye Aspect Ratio"""
-    A = dist.euclidean(eye_landmarks[1], eye_landmarks[5])
-    B = dist.euclidean(eye_landmarks[2], eye_landmarks[4])
-    C = dist.euclidean(eye_landmarks[0], eye_landmarks[3])
+    """Calculate Eye Aspect Ratio without scipy"""
+    A = euclidean_distance(eye_landmarks[1], eye_landmarks[5])
+    B = euclidean_distance(eye_landmarks[2], eye_landmarks[4])
+    C = euclidean_distance(eye_landmarks[0], eye_landmarks[3])
     return (A + B) / (2.0 * C)
 
 # ==================== SESSION STATE ====================
