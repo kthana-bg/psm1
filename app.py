@@ -8,7 +8,11 @@ from collections import deque
 st.set_page_config(page_title="VisionMate", layout="wide", initial_sidebar_state="collapsed")
 
 # ==================== FACE DETECTION SETUP ====================
+# Import mediapipe solutions explicitly (REQUIRED for proper initialization)
+mp_drawing = mp.solutions.drawing_utils
 mp_face_mesh = mp.solutions.face_mesh
+
+# Initialize Face Mesh
 face_mesh = mp_face_mesh.FaceMesh(
     max_num_faces=1,
     refine_landmarks=True,
@@ -21,11 +25,11 @@ LEFT_EYE = [362, 385, 387, 263, 373, 380]
 RIGHT_EYE = [33, 160, 158, 133, 153, 144]
 
 def euclidean_distance(p1, p2):
-    """Calculate Euclidean distance between two points using NumPy"""
+    """Calculate Euclidean distance between two points"""
     return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
 
 def calculate_ear(eye_landmarks):
-    """Calculate Eye Aspect Ratio without scipy"""
+    """Calculate Eye Aspect Ratio"""
     A = euclidean_distance(eye_landmarks[1], eye_landmarks[5])
     B = euclidean_distance(eye_landmarks[2], eye_landmarks[4])
     C = euclidean_distance(eye_landmarks[0], eye_landmarks[3])
