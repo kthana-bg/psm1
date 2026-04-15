@@ -88,7 +88,7 @@ def analyze():
     return ear, status
 
 # ================= TITLE =================
-st.markdown("<br><br><h1>VISIONMATE</h1>", unsafe_allow_html=True)
+st.markdown("<br><h1>VISIONMATE</h1>", unsafe_allow_html=True)
 
 # ================= 2-COLUMN LAYOUT (NO SCROLL) =================
 col1, col2 = st.columns([1.4, 0.8])
@@ -123,7 +123,7 @@ with col1:
             });
         </script>
         '
-        style="width:80%; height: 520px; object-fit: cover; border:none; ">
+        style="width:94%; height: 500px; object-fit: cover; border:none; ">
     </iframe>
     """, unsafe_allow_html=True)
 # ================= DASHBOARD =================
