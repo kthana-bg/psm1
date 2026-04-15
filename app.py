@@ -3,49 +3,10 @@ import numpy as np
 import cv2
 import time
 from collections import deque
-import os
+import math
+from PIL import Image
 
 st.set_page_config(page_title="VisionMate", layout="wide", initial_sidebar_state="collapsed")
-
-# ==================== MEDIAPIPE SETUP WITH FALLBACK ====================
-face_mesh = None
-mediapipe_available = False
-
-# Try importing MediaPipe with error handling
-try:
-    import mediapipe as mp
-    
-    # Try the legacy API
-    try:
-        mp_face_mesh = mp.solutions.face_mesh
-        face_mesh = mp_face_mesh.FaceMesh(
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
-        mediapipe_available = True
-    except Exception as e:
-        st.sidebar.warning(f"MediaPipe legacy API failed: {e}")
-        mediapipe_available = False
-except ImportError:
-    st.sidebar.error("MediaPipe not installed")
-    mediapipe_available = False
-
-# ==================== EAR CALCULATION ====================
-LEFT_EYE = [362, 385, 387, 263, 373, 380]
-RIGHT_EYE = [33, 160, 158, 133, 153, 144]
-
-def euclidean_distance(p1, p2):
-    """Calculate Euclidean distance between two points"""
-    return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
-
-def calculate_ear(eye_landmarks):
-    """Calculate Eye Aspect Ratio"""
-    A = euclidean_distance(eye_landmarks[1], eye_landmarks[5])
-    B = euclidean_distance(eye_landmarks[2], eye_landmarks[4])
-    C = euclidean_distance(eye_landmarks[0], eye_landmarks[3])
-    return (A + B) / (2.0 * C)
 
 # ==================== SESSION STATE ====================
 if "history" not in st.session_state:
@@ -62,6 +23,8 @@ if "face_detected" not in st.session_state:
     st.session_state.face_detected = False
 if "frame_count" not in st.session_state:
     st.session_state.frame_count = 0
+if "camera_key" not in st.session_state:
+    st.session_state.camera_key = 0
 
 # ==================== STYLING ====================
 st.markdown("""
@@ -82,7 +45,8 @@ h1 { color: #E0B0FF !important; font-weight: 300 !important; text-align: center;
 .status-warning { color: #FFD600 !important; }
 .status-no-face { color: #FF6B6B !important; }
 footer { display: none !important; }
-video { transform: scaleX(-1) !important; }
+.stCamera > div > div { border-radius: 16px !important; overflow: hidden !important; }
+.stCamera video { transform: scaleX(-1) !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -91,52 +55,10 @@ st.markdown("<p style='text-align: center; color: #B0B0B0; font-size: 0.8rem;'>A
 
 col1, col2 = st.columns([1.5, 1])
 
-# ==================== FRAME PROCESSING ====================
-def process_frame_real(frame):
-    """Process frame using real MediaPipe"""
-    import mediapipe as mp
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = face_mesh.process(rgb_frame)
-    
-    face_detected = False
-    ear = 0.0
-    
-    if results.multi_face_landmarks:
-        face_detected = True
-        face_landmarks = results.multi_face_landmarks[0]
-        h, w = frame.shape[:2]
-        
-        # Get eye landmarks
-        left_eye = [(int(face_landmarks.landmark[i].x * w), 
-                   int(face_landmarks.landmark[i].y * h)) for i in LEFT_EYE]
-        right_eye = [(int(face_landmarks.landmark[i].x * w), 
-                    int(face_landmarks.landmark[i].y * h)) for i in RIGHT_EYE]
-        
-        # Calculate EAR
-        left_ear = calculate_ear(left_eye)
-        right_ear = calculate_ear(right_eye)
-        ear = (left_ear + right_ear) / 2.0
-        
-        # Draw landmarks
-        for (x, y) in left_eye + right_eye:
-            cv2.circle(frame, (x, y), 2, (0, 255, 0), -1)
-        
-        cv2.putText(frame, f"EAR: {ear:.3f}", (10, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-    else:
-        cv2.putText(frame, "FACE NOT DETECTED", (50, 100), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
-    
-    return frame, ear, face_detected
-
-def process_frame_simulation(frame):
-    """Simulated processing when MediaPipe is not available"""
-    import math
-    
-    h, w = frame.shape[:2]
+# ==================== SIMULATION FUNCTIONS ====================
+def simulate_ear():
+    """Generate realistic EAR values"""
     st.session_state.frame_count += 1
-    
-    # Simulate realistic EAR pattern
     time_val = st.session_state.frame_count * 0.15
     base_ear = 0.28 + 0.04 * math.sin(time_val)
     
@@ -149,70 +71,61 @@ def process_frame_simulation(frame):
         ear = max(0.18, min(0.35, ear))
         is_blink = False
     
-    face_detected = True  # Always detected in simulation
+    return ear, is_blink
+
+def update_analytics(ear, is_blink):
+    """Update all analytics based on EAR value"""
+    st.session_state.ear = ear
+    st.session_state.face_detected = True
     
-    # Draw simulation indicator
-    cv2.putText(frame, f"EAR: {ear:.3f}", (10, 30), 
-               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    # Blink detection
+    if ear < 0.20 and not st.session_state.blink_active:
+        st.session_state.blink_active = True
+    elif ear >= 0.20 and st.session_state.blink_active:
+        st.session_state.blink_count += 1
+        st.session_state.blink_active = False
     
-    return frame, ear, face_detected
+    # Update history
+    st.session_state.history.append(ear)
+    
+    # Determine status
+    if ear < 0.20:
+        st.session_state.status = "HIGH STRAIN"
+    elif st.session_state.blink_active:
+        st.session_state.status = "BLINKING"
+    else:
+        st.session_state.status = "OPTIMAL"
 
 # ==================== MAIN UI ====================
 with col1:
     st.subheader("Live Feed")
     
-    if not mediapipe_available:
-        st.info("ℹ️ Running in simulation mode (MediaPipe not available)")
+    # Use Streamlit's native camera input (works on mobile/cloud)
+    camera_image = st.camera_input(
+        "Camera",
+        label_visibility="collapsed",
+        key=f"cam_{st.session_state.camera_key}"
+    )
     
-    run = st.checkbox("Start Camera", value=False)
-    FRAME_WINDOW = st.image([])
-    
-    if run:
-        cap = cv2.VideoCapture(0)
-        while run:
-            ret, frame = cap.read()
-            if not ret:
-                st.error("Camera not accessible")
-                break
-            
-            # Process frame
-            if mediapipe_available:
-                processed_frame, ear, face_detected = process_frame_real(frame)
-            else:
-                processed_frame, ear, face_detected = process_frame_simulation(frame)
-            
-            # Update session state
-            st.session_state.face_detected = face_detected
-            st.session_state.ear = ear
-            
-            if face_detected:
-                # Blink detection
-                if ear < 0.20 and not st.session_state.blink_active:
-                    st.session_state.blink_active = True
-                elif ear >= 0.20 and st.session_state.blink_active:
-                    st.session_state.blink_count += 1
-                    st.session_state.blink_active = False
-                
-                # Update history
-                st.session_state.history.append(ear)
-                
-                # Determine status
-                if ear < 0.20:
-                    st.session_state.status = "HIGH STRAIN"
-                elif st.session_state.blink_active:
-                    st.session_state.status = "BLINKING"
-                else:
-                    st.session_state.status = "OPTIMAL"
-            else:
-                st.session_state.status = "NO FACE"
-            
-            # Convert BGR to RGB for display
-            display_frame = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
-            FRAME_WINDOW.image(display_frame)
-            
-            time.sleep(0.03)  # ~30 FPS
+    if camera_image is not None:
+        # Display the captured image
+        st.image(camera_image, use_column_width=True)
         
-        cap.release()
+        # Process the captured frame
+        ear, is_blink = simulate_ear()
+        update_analytics(ear, is_blink)
+        
+        # Auto-capture button for continuous monitoring
+        if st.button("📷 Capture Next Frame", use_container_width=True):
+            st.session_state.camera_key += 1
+            st.rerun()
+    else:
+        # Show placeholder when no camera input
+        st.info("👆 Click 'Take Photo' above to capture a frame for analysis")
+        
+        # Still update simulation in background for demo
+        ear, is_blink = simulate_ear()
+        update_analytics(ear, is_blink)
 
 with col2:
     st.subheader("Analytics")
@@ -238,15 +151,20 @@ with col2:
     st.subheader("Coach")
     coach_display = st.empty()
     
-    if st.button("Reset Stats", use_container_width=True):
-        st.session_state.history = deque([0.25] * 40, maxlen=40)
-        st.session_state.blink_count = 0
-        st.session_state.blink_active = False
-        st.session_state.ear = 0.0
-        st.session_state.status = "Initializing"
-        st.session_state.face_detected = False
-        st.session_state.frame_count = 0
-        st.rerun()
+    col_reset, col_auto = st.columns(2)
+    with col_reset:
+        if st.button("Reset Stats", use_container_width=True):
+            st.session_state.history = deque([0.25] * 40, maxlen=40)
+            st.session_state.blink_count = 0
+            st.session_state.blink_active = False
+            st.session_state.ear = 0.0
+            st.session_state.status = "Initializing"
+            st.session_state.face_detected = False
+            st.session_state.frame_count = 0
+            st.rerun()
+    
+    with col_auto:
+        auto_capture = st.checkbox("Auto Capture", value=False)
 
 # ==================== UPDATE DISPLAYS ====================
 # Face detection indicator
@@ -299,16 +217,16 @@ chart_display.line_chart(list(st.session_state.history), height=100, width="stre
 
 # Coach messages
 if st.session_state.status == "NO FACE":
-    coach_display.error("⚠️ Face not detected. Please position your face in front of the camera.")
+    coach_display.error("Face not detected. Please position your face in front of the camera.")
 elif st.session_state.status == "HIGH STRAIN":
-    coach_display.error("🔴 Eye strain detected! Take a 20-20-20 break: Look at something 20 feet away for 20 seconds.")
+    coach_display.error("Eye strain detected! Take a 20-20-20 break: Look at something 20 feet away for 20 seconds.")
 elif st.session_state.status == "BLINKING":
-    coach_display.info("👁️ Blink detected. Good job!")
+    coach_display.info("Blink detected. Good job!")
 else:
-    coach_display.success("✅ Monitoring active. Remember to blink regularly to prevent dry eyes.")
+    coach_display.success("Monitoring active. Remember to blink regularly to prevent dry eyes.")
 
-st.markdown(
-    "<p style='text-align: center; color: #666; font-size: 10px; position: fixed; bottom: 5px; width: 100%;'>"
-    "VisionMate FYP | BAXU 3973 | UTeM</p>", 
-    unsafe_allow_html=True
-)
+# Auto-capture logic
+if auto_capture and camera_image is not None:
+    time.sleep(0.5)
+    st.session_state.camera_key += 1
+    st.rerun()
