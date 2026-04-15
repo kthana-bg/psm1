@@ -35,5 +35,3 @@ def process_frame():
         "ear": float(ear)
     })
 
-
-if __name__ == "__main__":
