@@ -113,7 +113,7 @@ with col1:
     """
 
     st.markdown("""
-    <iframe
+    <iframe 
         srcdoc='
         <video autoplay playsinline style="width:100%; border-radius:16px;"></video>
         <script>
@@ -123,7 +123,7 @@ with col1:
             });
         </script>
         '
-        style="width:100%; height: 520px; object-fit: cover; border:none; border-radius:16px;">
+        style="width:80%; height: 520px; object-fit: cover; border:none; ">
     </iframe>
     """, unsafe_allow_html=True)
 # ================= DASHBOARD =================
