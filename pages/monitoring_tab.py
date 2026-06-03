@@ -108,15 +108,9 @@ def render_monitoring_tab(
     st.header("Live Monitoring")
 
     # Webrtc (Streamlit Cloud)
-    if WEBRTC_AVAILABLE:
-        _render_webrtc_monitoring(
-            eye_model_name, posture_model_name, user_id
-        )
-    else:
-        # Local fallback (cv2.VideoCapture)
-        _render_local_monitoring(
-            processor, eye_model_name, posture_model_name, user_id
-        )
+    _render_webrtc_monitoring(
+        eye_model_name, posture_model_name, user_id
+    )
 
 
 # Webrtc monitoring (cloud)
