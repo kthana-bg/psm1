@@ -15,7 +15,3 @@ secondaryBackgroundColor = "#1e2130"
 primaryColor = "#3498db"
 textColor = "#e0e0e0"
 font = "sans serif"
-
-[runner]
-# Disable the file watcher in production to save CPU
-fastRerenderEnabled = true
