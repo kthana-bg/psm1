@@ -3,8 +3,7 @@ import time
 import cv2
 import sys
 import os
-import requests
-# from twilio.rest import Client 
+import streamlit.components.v1 as components  # <--- Added for HTML embedding
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path: sys.path.insert(0, _ROOT)
@@ -12,32 +11,10 @@ if _ROOT not in sys.path: sys.path.insert(0, _ROOT)
 from utils.frame_processor import (
     FrameResult,
     FrameProcessor,
-    VisionMateTransformer,
-    WEBRTC_AVAILABLE,
     load_mediapipe_landmarkers,
 )
 from utils.voice_guidance import voice_guidance
 from database.db_manager import save_health_metric
-
-# METERED TURN SERVER SETUP
-@st.cache_data
-def get_ice_servers():
-    """Fetches TURN servers from Metered API to bypass cloud firewalls."""
-    try:
-        domain = st.secrets["METERED_DOMAIN"]
-        api_key = st.secrets["METERED_SECRET_KEY"]
-        
-        # Call the Metered API to get fresh TURN credentials
-        url = f"https://{domain}/api/v1/turn/credentials?apiKey={api_key}"
-        response = requests.get(url)
-        response.raise_for_status()
-        
-        # Metered automatically returns the exact JSON list WebRTC needs!
-        return response.json()
-        
-    except Exception as e:
-        st.error(f"Failed to load Metered TURN servers: {e}")
-        return [{"urls": ["stun:stun.l.google.com:19302"]}]
 
 
 def get_status_color(status: str, good_value: str = "Normal") -> str:
@@ -129,149 +106,29 @@ def render_monitoring_tab(
 ):
     st.header("Live Monitoring")
 
-    # Webrtc (Streamlit Cloud)
-    _render_webrtc_monitoring(
-        eye_model_name, posture_model_name, user_id
-    )
-    """
-    if WEBRTC_AVAILABLE:
-        _render_webrtc_monitoring(
-            eye_model_name, posture_model_name, user_id
-        )
-
-    else:
-        # Local fallback (cv2.VideoCapture)
-        _render_local_monitoring(
-            processor, eye_model_name, posture_model_name, user_id
-        )
-    """
-
-# Webrtc monitoring (cloud)
-def _render_webrtc_monitoring(eye_model_name, posture_model_name, user_id):
-    from streamlit_webrtc import webrtc_streamer, WebRtcMode
-    import streamlit as st
-
-    st.info(
-        "Click **START** below to allow webcam access. "
-        "Your browser will ask for permission — click Allow.",
-        icon="📷",
-    )
-
-    # Get or create the transformer instance stored in session state
-    if "transformer" not in st.session_state:
-        st.session_state["transformer"] = None
-
-    # Load MediaPipe landmarkers once (cached)
-    @st.cache_resource(show_spinner="Loading MediaPipe models...")
-    def _get_landmarkers():
-        return load_mediapipe_landmarkers()
-
-    face_lm, pose_lm = _get_landmarkers()
-
-    # Get active models from session state
-    eye_models     = st.session_state.get("eye_models") or {}
-    posture_models = st.session_state.get("posture_models") or {}
-    eye_model      = eye_models.get(eye_model_name)
-    posture_model  = posture_models.get(posture_model_name)
-
-    video_col, metrics_col = st.columns([2, 1])
-
-    with video_col:
-        ctx = webrtc_streamer(
-            key="visionmate",
-            mode=WebRtcMode.SENDRECV,
-            video_transformer_factory=VisionMateTransformer,
-            media_stream_constraints={
-                "video": {
-                    "width":  {"ideal": 640},
-                    "height": {"ideal": 480},
-                    "frameRate": {"ideal": 30},
-                },
-                "audio": False,
-            },
-            async_processing=True,
-
-            rtc_configuration={
-                "iceServers": get_ice_servers(),
-                "iceTransportPolicy": "relay"
-            },
-        )
+    # --- SWAPPED WEBRTC FOR CLIENT-SIDE HTML/JS ---
+    _render_client_side_monitoring()
 
 
-        # Inject models into transformer once it's running
-        if ctx.video_transformer:
-            t = ctx.video_transformer
-            t.face_landmarker    = face_lm
-            t.pose_landmarker    = pose_lm
-            t.eye_model          = eye_model
-            t.eye_model_name     = eye_model_name
-            t.posture_model      = posture_model
-            t.posture_model_name = posture_model_name
-            st.session_state["transformer"] = t
+# NEW: Client-Side Browser monitoring
+def _render_client_side_monitoring():
+    st.info("Webcam processing is running securely in your browser. No video is sent to the cloud.", icon="🚀")
+    
+    # Locate the frontend.html file in your root directory
+    html_file_path = os.path.join(_ROOT, "frontend.html")
+    
+    try:
+        with open(html_file_path, "r") as f:
+            html_code = f.read()
+            
+        # Inject the HTML and JavaScript directly into the Streamlit UI
+        components.html(html_code, height=650)
+        
+    except FileNotFoundError:
+        st.error(f"Could not find `frontend.html` at {html_file_path}. Please make sure you created it in your main project folder.")
 
-            # Track session start
-            if not st.session_state.get("monitoring_active"):
-                st.session_state["monitoring_active"] = True
-                st.session_state["session_start"]     = time.time()
-                voice_guidance.reset_all()
 
-        else:
-            # Stream stopped / not yet started
-            if st.session_state.get("monitoring_active"):
-                st.session_state["monitoring_active"] = False
-
-        # Session timer
-        if st.session_state.get("session_start"):
-            elapsed    = int(time.time() - st.session_state["session_start"])
-            mins, secs = divmod(elapsed, 60)
-            hrs,  mins = divmod(mins, 60)
-            timer_str  = (
-                f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0
-                else f"{mins:02d}:{secs:02d}"
-            )
-            st.caption(f"Session duration: {timer_str}")
-
-    # Metrics panel 
-    with metrics_col:
-        transformer = st.session_state.get("transformer")
-        if transformer:
-            result = transformer.get_result()
-        else:
-            result = FrameResult()
-
-        render_metrics(result, eye_model_name, posture_model_name)
-
-        # Voice guidance
-        voice_guidance.update_condition("eye_strain", result.eye_status     == "Strained")
-        voice_guidance.update_condition("slouching",  result.posture_status == "Slouching")
-        if st.session_state.get("session_start"):
-            session_mins = (time.time() - st.session_state["session_start"]) / 60.0
-            voice_guidance.update_condition("break_reminder", session_mins > 20)
-
-        # Save to DB every 5 seconds
-        last_save = st.session_state.get("last_metric_save", 0)
-        if time.time() - last_save >= 5 and st.session_state.get("monitoring_active"):
-            save_health_metric(
-                user_id              = user_id,
-                eye_status           = result.eye_status,
-                ear_value            = result.ear_value,
-                posture_status       = result.posture_status,
-                posture_angle        = result.posture_angle,
-                health_score         = result.health_score,
-                active_eye_model     = eye_model_name,
-                active_posture_model = posture_model_name,
-            )
-            st.session_state["last_metric_save"] = time.time()
-
-    # Refresh metrics panel every 0.5s while active
-    """
-    if st.session_state.get("monitoring_active"):
-        time.sleep(0.5)
-        st.rerun()
-    """
-
-# Local fallback monitoring (cv2.VideoCapture)
-
+# Local fallback monitoring (cv2.VideoCapture) - Kept intact as requested!
 def _render_local_monitoring(processor, eye_model_name, posture_model_name, user_id):
     col_start, col_stop, col_voice = st.columns([1, 1, 2])
 
@@ -353,6 +210,3 @@ def _render_local_monitoring(processor, eye_model_name, posture_model_name, user
                 active_posture_model = posture_model_name,
             )
             st.session_state["last_metric_save"] = time.time()
-
-    #time.sleep(0.3)
-    #st.rerun()
