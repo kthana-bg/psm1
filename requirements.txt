@@ -16,3 +16,4 @@ h5py
 python-dotenv
 tornado
 twilio
+tensorflowjs
