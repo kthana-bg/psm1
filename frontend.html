@@ -1,26 +1,115 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>VisionMate Client-Side Tracker</title>
+    <title>VisionMate Tracking</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision"></script>
     <style>
-        body { margin: 0; display: flex; flex-direction: column; align-items: center; color: white; font-family: sans-serif; }
-        canvas { border-radius: 8px; border: 2px solid #2ecc71; margin-top: 10px; }
-        .metrics { display: flex; gap: 20px; margin-top: 10px; }
-        .metric-card { background: #1e2130; padding: 10px 20px; border-radius: 8px; border-left: 4px solid #2ecc71; }
+        /* Mimic Streamlit Dark Theme */
+        body {
+            background-color: #0e1117;
+            color: #fafafa;
+            font-family: "Source Sans Pro", sans-serif;
+            margin: 0;
+            display: flex;
+            gap: 20px;
+        }
+        
+        /* Left Column: Video */
+        .video-column {
+            flex: 2;
+            background: #1e2130;
+            border-radius: 8px;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        canvas { width: 100%; background: #000; }
+        .timer { padding: 10px 15px; font-size: 13px; color: #aaa; }
+
+        /* Right Column: Metrics */
+        .metrics-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .metric-card {
+            background: #1e2130;
+            border-radius: 8px;
+            padding: 15px 20px;
+            border-left: 4px solid #555;
+        }
+        .metric-card.green { border-left-color: #2ecc71; }
+        .metric-card.red { border-left-color: #e74c3c; }
+        .metric-card.orange { border-left-color: #f39c12; }
+        
+        .metric-title { font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 6px 0; }
+        .metric-value { font-size: 26px; font-weight: bold; margin: 0 0 6px 0; }
+        .metric-value.green-text { color: #2ecc71; }
+        .metric-value.red-text { color: #e74c3c; }
+        .metric-sub { font-size: 12px; color: #aaa; margin: 0; }
+        
+        .info-card {
+            background: #1e2130;
+            border-radius: 8px;
+            padding: 12px 15px;
+            font-size: 12px;
+            color: #aaa;
+            line-height: 1.6;
+        }
+        
+        .face-status {
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .face-detected { background: rgba(46, 204, 113, 0.1); border: 1px solid #2ecc71; color: #2ecc71; }
+        .no-face { background: rgba(231, 76, 60, 0.1); border: 1px solid #e74c3c; color: #e74c3c; }
     </style>
 </head>
 <body>
-    
-    <div class="metrics">
-        <div class="metric-card" id="eye-status">Eye Status: Waiting...</div>
-        <div class="metric-card" id="posture-status">Posture: Waiting...</div>
+
+    <div class="video-column">
+        <video id="webcam" autoplay playsinline style="display: none;"></video>
+        <canvas id="output_canvas" width="640" height="480"></canvas>
+        <div class="timer" id="session-timer">Session duration: 00:00</div>
     </div>
 
-    <video id="webcam" autoplay playsinline style="display: none;"></video>
-    
-    <canvas id="output_canvas" width="640" height="480"></canvas>
+    <div class="metrics-column">
+        
+        <div class="metric-card green" id="card-health">
+            <p class="metric-title">Health Score</p>
+            <p class="metric-value green-text" id="val-health">100 / 100</p>
+            <p class="metric-sub">Combined eye and posture</p>
+        </div>
+        
+        <div class="metric-card red" id="card-eye">
+            <p class="metric-title">Eye Status</p>
+            <p class="metric-value red-text" id="val-eye">Unknown</p>
+            <p class="metric-sub" id="sub-eye">EAR: 0.000</p>
+        </div>
+
+        <div class="metric-card red" id="card-posture">
+            <p class="metric-title">Posture Status</p>
+            <p class="metric-value red-text" id="val-posture">Unknown</p>
+            <p class="metric-sub" id="sub-posture">Neck angle: 0.0 deg</p>
+        </div>
+
+        <div class="info-card">
+            <b>Eye model:</b> Custom CNN<br>
+            <b>Posture model:</b> MediaPipe Pose (Rule-Based)<br>
+            Eye latency: <span id="lat-eye">0.0 ms</span><br>
+            Posture latency: <span id="lat-posture">0.0 ms</span>
+        </div>
+
+        <div class="face-status no-face" id="face-status-bar">
+            No Face
+        </div>
+    </div>
 
     <script type="module">
         import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision";
@@ -30,57 +119,42 @@
         const ctx = canvas.getContext('2d');
         
         let faceLandmarker;
-        let customEyeModel;
 
-        // 1. Initialize MediaPipe and TFJS Models
         async function initializeModels() {
-            // Load MediaPipe
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
             faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
                 baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" },
                 runningMode: "VIDEO"
             });
-
-            // Load your custom converted TFJS model (Update path to where you host it)
-            // customEyeModel = await tf.loadLayersModel('URL_TO_YOUR_TFJS_EYE_MODEL/model.json');
-            
-            console.log("Models loaded. Starting webcam...");
             startWebcam();
         }
 
-        // 2. Start the Webcam
         async function startWebcam() {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
             video.srcObject = stream;
             video.addEventListener('loadeddata', predictWebcam);
         }
 
-        // 3. The Main Inference Loop (Runs 30x a second)
         async function predictWebcam() {
             let startTimeMs = performance.now();
-            
-            // Draw the current webcam frame to the canvas
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Run MediaPipe Face Detection
             if (faceLandmarker) {
                 const results = faceLandmarker.detectForVideo(video, startTimeMs);
-                
-                if (results.faceLandmarks.length > 0) {
-                    // TODO: Extract eye coordinates from results.faceLandmarks[0]
-                    // TODO: Pass those coordinates to customEyeModel.predict(tensor)
-                    
-                    document.getElementById('eye-status').innerText = "Eye Status: Face Detected!";
+                const faceStatusBar = document.getElementById('face-status-bar');
+
+                if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+                    faceStatusBar.innerText = "Face Detected";
+                    faceStatusBar.className = "face-status face-detected";
+                    // TODO: Feed landmarks to JS models to update the other cards dynamically
                 } else {
-                    document.getElementById('eye-status').innerText = "Eye Status: No Face";
+                    faceStatusBar.innerText = "No Face";
+                    faceStatusBar.className = "face-status no-face";
                 }
             }
-
-            // Loop exactly when the browser is ready for the next frame
             window.requestAnimationFrame(predictWebcam);
         }
 
-        // Kick off the app
         initializeModels();
     </script>
 </body>
