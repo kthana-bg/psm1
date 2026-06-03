@@ -3,6 +3,7 @@ import time
 import cv2
 import sys
 import os
+import requests
 # from twilio.rest import Client 
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,20 +19,24 @@ from utils.frame_processor import (
 from utils.voice_guidance import voice_guidance
 from database.db_manager import save_health_metric
 
-# --- EXPRESSTURN SERVER SETUP ---
+# METERED TURN SERVER SETUP
 @st.cache_data
 def get_ice_servers():
-    """Fetches TURN servers from Streamlit secrets to bypass cloud firewalls."""
+    """Fetches TURN servers from Metered API to bypass cloud firewalls."""
     try:
-        return [
-            {
-                "urls": [st.secrets["EXPRESSTURN_URL"]],
-                "username": st.secrets["EXPRESSTURN_USERNAME"],
-                "credential": st.secrets["EXPRESSTURN_PASSWORD"],
-            }
-        ]
+        domain = st.secrets["METERED_DOMAIN"]
+        api_key = st.secrets["METERED_SECRET_KEY"]
+        
+        # Call the Metered API to get fresh TURN credentials
+        url = f"https://{domain}/api/v1/turn/credentials?apiKey={api_key}"
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        # Metered automatically returns the exact JSON list WebRTC needs!
+        return response.json()
+        
     except Exception as e:
-        # Fallback to Google STUN if secrets are missing
+        st.error(f"Failed to load Metered TURN servers: {e}")
         return [{"urls": ["stun:stun.l.google.com:19302"]}]
 
 
