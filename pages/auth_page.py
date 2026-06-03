@@ -5,7 +5,8 @@ import time
 import sys
 import os
 
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path: sys.path.insert(0, _ROOT)
 from utils.auth_utils import register_user_face, login_by_face
 
 DISPLAY_W = 320
@@ -13,6 +14,7 @@ DISPLAY_H = 240
 
 
 def _decode_camera_image(img_file) -> np.ndarray:
+    """Convert st.camera_input file buffer → BGR numpy array."""
     bytes_data = img_file.getvalue()
     arr        = np.frombuffer(bytes_data, np.uint8)
     bgr        = cv2.imdecode(arr, cv2.IMREAD_COLOR)
@@ -20,7 +22,10 @@ def _decode_camera_image(img_file) -> np.ndarray:
 
 
 def _get_face_embedding(bgr_frame: np.ndarray):
-
+    """
+    Extract face embedding from a BGR frame.
+    Returns embedding array or None if no face found / library missing.
+    """
     try:
         import face_recognition
         rgb    = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
@@ -62,6 +67,8 @@ def _show_static_placeholder(placeholder, text: str):
         unsafe_allow_html=True,
     )
 
+
+# Login Tab 
 
 def render_login_tab():
     st.markdown(
@@ -115,6 +122,8 @@ def render_login_tab():
         else:
             status_box.error(result["message"])
 
+
+# Register Tab
 
 def render_register_tab():
     st.markdown(
@@ -192,6 +201,8 @@ def render_register_tab():
         else:
             status_box.error(result["message"])
 
+
+# Main entry point 
 
 def render_auth_page():
     st.markdown(
