@@ -111,7 +111,18 @@ def render_monitoring_tab(
     _render_webrtc_monitoring(
         eye_model_name, posture_model_name, user_id
     )
+    """
+    if WEBRTC_AVAILABLE:
+        _render_webrtc_monitoring(
+            eye_model_name, posture_model_name, user_id
+        )
 
+    else:
+        # Local fallback (cv2.VideoCapture)
+        _render_local_monitoring(
+            processor, eye_model_name, posture_model_name, user_id
+        )
+    """
 
 # Webrtc monitoring (cloud)
 def _render_webrtc_monitoring(eye_model_name, posture_model_name, user_id):
@@ -228,10 +239,11 @@ def _render_webrtc_monitoring(eye_model_name, posture_model_name, user_id):
             st.session_state["last_metric_save"] = time.time()
 
     # Refresh metrics panel every 0.5s while active
+    """
     if st.session_state.get("monitoring_active"):
         time.sleep(0.5)
         st.rerun()
-
+    """
 
 # Local fallback monitoring (cv2.VideoCapture)
 
