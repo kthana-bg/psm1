@@ -31,6 +31,7 @@ def get_ice_servers():
     except Exception as e:
         print(f"Twilio error: {e}")
         # Fallback to Google STUN if secrets are missing or fail
+        st.error(f"Failed to connect to Twilio: {e}")
         return [{"urls": ["stun:stun.l.google.com:19302"]}] 
 
 
