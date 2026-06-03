@@ -82,7 +82,7 @@ def render_monitoring_tab(
         st.info("Click 'Start Session' to begin monitoring.")
         return
 
-    # ── Active monitoring layout ───────────────────────────────
+    # Active monitoring layout
     video_col, metrics_col = st.columns([2, 1])
     result = processor.get_latest_result()
 
@@ -163,15 +163,15 @@ def render_monitoring_tab(
             unsafe_allow_html=True,
         )
 
-    # ── Voice guidance ─────────────────────────────────────────
-    voice_guidance.update_condition("eye_strain", result.eye_status     == "Strained")
+    # Voice guidance
+    voice_guidance.update_condition("eye_strain", result.eye_status == "Strained")
     voice_guidance.update_condition("slouching",  result.posture_status == "Slouching")
 
     if "session_start" in st.session_state:
         session_mins = (time.time() - st.session_state["session_start"]) / 60.0
         voice_guidance.update_condition("break_reminder", session_mins > 20)
 
-    # ── Persist metric every 5 seconds ────────────────────────
+    # Persist metric every 5 seconds
     last_save = st.session_state.get("last_metric_save", 0)
     if time.time() - last_save >= 5:
         save_health_metric(
@@ -186,6 +186,5 @@ def render_monitoring_tab(
         )
         st.session_state["last_metric_save"] = time.time()
 
-    # ── PERFORMANCE: refresh every 0.3s instead of 1s ─────────
     time.sleep(0.3)
     st.rerun()
