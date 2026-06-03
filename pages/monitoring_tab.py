@@ -3,7 +3,7 @@ import time
 import cv2
 import sys
 import os
-from twilio.rest import Client
+# from twilio.rest import Client 
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path: sys.path.insert(0, _ROOT)
@@ -18,21 +18,21 @@ from utils.frame_processor import (
 from utils.voice_guidance import voice_guidance
 from database.db_manager import save_health_metric
 
-# --- TWILIO TURN SERVER SETUP ---
+# --- EXPRESSTURN SERVER SETUP ---
 @st.cache_data
 def get_ice_servers():
-    """Fetches TURN servers from Twilio to bypass cloud firewalls."""
+    """Fetches TURN servers from Streamlit secrets to bypass cloud firewalls."""
     try:
-        account_sid = st.secrets["TWILIO_ACCOUNT_SID"]
-        auth_token = st.secrets["TWILIO_AUTH_TOKEN"]
-        client = Client(account_sid, auth_token)
-        token = client.tokens.create()
-        return token.ice_servers
+        return [
+            {
+                "urls": [st.secrets["EXPRESSTURN_URL"]],
+                "username": st.secrets["EXPRESSTURN_USERNAME"],
+                "credential": st.secrets["EXPRESSTURN_PASSWORD"],
+            }
+        ]
     except Exception as e:
-        print(f"Twilio error: {e}")
-        # Fallback to Google STUN if secrets are missing or fail
-        st.error(f"Failed to connect to Twilio: {e}")
-        return [{"urls": ["stun:stun.l.google.com:19302"]}] 
+        # Fallback to Google STUN if secrets are missing
+        return [{"urls": ["stun:stun.l.google.com:19302"]}]
 
 
 def get_status_color(status: str, good_value: str = "Normal") -> str:
@@ -149,6 +149,7 @@ def _render_webrtc_monitoring(eye_model_name, posture_model_name, user_id):
     st.info(
         "Click **START** below to allow webcam access. "
         "Your browser will ask for permission — click Allow.",
+        icon="📷",
     )
 
     # Get or create the transformer instance stored in session state
@@ -184,9 +185,13 @@ def _render_webrtc_monitoring(eye_model_name, posture_model_name, user_id):
                 "audio": False,
             },
             async_processing=True,
+            # --- UPDATED TO USE EXPRESSTURN ---
             rtc_configuration={
-                "iceServers": get_ice_servers() 
+                "iceServers": get_ice_servers()
             },
+            # rtc_configuration={
+            #     "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+            # },
         )
 
         # Inject models into transformer once it's running
@@ -254,12 +259,12 @@ def _render_webrtc_monitoring(eye_model_name, posture_model_name, user_id):
             )
             st.session_state["last_metric_save"] = time.time()
 
+    # Refresh metrics panel every 0.5s while active
     """
     if st.session_state.get("monitoring_active"):
         time.sleep(0.5)
         st.rerun()
     """
-
 
 # Local fallback monitoring (cv2.VideoCapture)
 
