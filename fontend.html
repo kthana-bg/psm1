@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VisionMate Client-Side Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision"></script>
+    <style>
+        body { margin: 0; display: flex; flex-direction: column; align-items: center; color: white; font-family: sans-serif; }
+        canvas { border-radius: 8px; border: 2px solid #2ecc71; margin-top: 10px; }
+        .metrics { display: flex; gap: 20px; margin-top: 10px; }
+        .metric-card { background: #1e2130; padding: 10px 20px; border-radius: 8px; border-left: 4px solid #2ecc71; }
+    </style>
+</head>
+<body>
+    
+    <div class="metrics">
+        <div class="metric-card" id="eye-status">Eye Status: Waiting...</div>
+        <div class="metric-card" id="posture-status">Posture: Waiting...</div>
+    </div>
+
+    <video id="webcam" autoplay playsinline style="display: none;"></video>
+    
+    <canvas id="output_canvas" width="640" height="480"></canvas>
+
+    <script type="module">
+        import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision";
+
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('output_canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let faceLandmarker;
+        let customEyeModel;
+
+        // 1. Initialize MediaPipe and TFJS Models
+        async function initializeModels() {
+            // Load MediaPipe
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
+            faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" },
+                runningMode: "VIDEO"
+            });
+
+            // Load your custom converted TFJS model (Update path to where you host it)
+            // customEyeModel = await tf.loadLayersModel('URL_TO_YOUR_TFJS_EYE_MODEL/model.json');
+            
+            console.log("Models loaded. Starting webcam...");
+            startWebcam();
+        }
+
+        // 2. Start the Webcam
+        async function startWebcam() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+            video.srcObject = stream;
+            video.addEventListener('loadeddata', predictWebcam);
+        }
+
+        // 3. The Main Inference Loop (Runs 30x a second)
+        async function predictWebcam() {
+            let startTimeMs = performance.now();
+            
+            // Draw the current webcam frame to the canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Run MediaPipe Face Detection
+            if (faceLandmarker) {
+                const results = faceLandmarker.detectForVideo(video, startTimeMs);
+                
+                if (results.faceLandmarks.length > 0) {
+                    // TODO: Extract eye coordinates from results.faceLandmarks[0]
+                    // TODO: Pass those coordinates to customEyeModel.predict(tensor)
+                    
+                    document.getElementById('eye-status').innerText = "Eye Status: Face Detected!";
+                } else {
+                    document.getElementById('eye-status').innerText = "Eye Status: No Face";
+                }
+            }
+
+            // Loop exactly when the browser is ready for the next frame
+            window.requestAnimationFrame(predictWebcam);
+        }
+
+        // Kick off the app
+        initializeModels();
+    </script>
+</body>
+</html>
