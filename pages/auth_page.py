@@ -137,7 +137,7 @@ def render_register_tab():
         full_name = st.text_input(
             "Full Name",
             key="reg_fullname",
-            placeholder="e.g. Ahmad Balem",
+            placeholder="e.g. Keerthana Bale Murali",
         )
 
     st.markdown("<br>", unsafe_allow_html=True)
