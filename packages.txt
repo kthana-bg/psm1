@@ -1,5 +1,4 @@
 libgl1
 libglib2.0-dev
-libavcodec-dev
-libavformat-dev
-libswscale-dev
+libgles2
+libegl1
