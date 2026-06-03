@@ -11,3 +11,5 @@ plotly
 joblib
 h5py
 python-dotenv
+streamlit-webrtc==0.47.9
+av
