@@ -23,8 +23,8 @@ from database.db_manager import save_health_metric
 def get_ice_servers():
     """Fetches TURN servers from Twilio to bypass cloud firewalls."""
     try:
-        account_sid = st.secrets["TWILIO_ACCOUNT_SID"]
-        auth_token = st.secrets["TWILIO_AUTH_TOKEN"]
+        account_sid = st.secrets["AC387679f688b0b9bb231417b4d9bedd9d"]
+        auth_token = st.secrets["8318980b854aa94c87f81822f9e01f7f"]
         client = Client(account_sid, auth_token)
         token = client.tokens.create()
         return token.ice_servers
