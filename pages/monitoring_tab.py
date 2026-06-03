@@ -54,12 +54,6 @@ def metric_card(label: str, value: str, color: str, sub_text: str = ""):
 def render_metrics(result: FrameResult, eye_model_name: str, posture_model_name: str):
     #Render the right-hand metrics panel from a FrameResult.
     metric_card(
-        "Health Score",
-        f"{result.health_score:.0f} / 100",
-        get_health_color(result.health_score),
-        "Combined eye and posture",
-    )
-    metric_card(
         "Eye Status",
         result.eye_status,
         get_status_color(result.eye_status, "Normal"),
