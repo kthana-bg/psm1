@@ -8,7 +8,8 @@ from datetime import datetime
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path: sys.path.insert(0, _ROOT)
 
 from database.db_manager import get_health_metrics
 
