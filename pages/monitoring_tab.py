@@ -190,14 +190,13 @@ def _render_webrtc_monitoring(eye_model_name, posture_model_name, user_id):
                 "audio": False,
             },
             async_processing=True,
-            # --- UPDATED TO USE EXPRESSTURN ---
+
             rtc_configuration={
-                "iceServers": get_ice_servers()
+                "iceServers": get_ice_servers(),
+                "iceTransportPolicy": "relay"
             },
-            # rtc_configuration={
-            #     "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-            # },
         )
+
 
         # Inject models into transformer once it's running
         if ctx.video_transformer:
