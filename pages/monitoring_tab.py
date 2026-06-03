@@ -106,26 +106,36 @@ def render_monitoring_tab(
 ):
     st.header("Live Monitoring")
 
-    # --- SWAPPED WEBRTC FOR CLIENT-SIDE HTML/JS ---
     _render_client_side_monitoring()
 
 
-# NEW: Client-Side Browser monitoring
 def _render_client_side_monitoring():
-    st.info("Webcam processing is running securely in your browser. No video is sent to the cloud.", icon="🚀")
-    
-    # Locate the frontend.html file in your root directory
-    html_file_path = os.path.join(_ROOT, "frontend.html")
-    
-    try:
-        with open(html_file_path, "r") as f:
-            html_code = f.read()
-            
-        # Inject the HTML and JavaScript directly into the Streamlit UI
-        components.html(html_code, height=650)
-        
-    except FileNotFoundError:
-        st.error(f"Could not find `frontend.html` at {html_file_path}. Please make sure you created it in your main project folder.")
+    # 1. Bring back the exact Streamlit button layout for the top bar
+    col_start, col_stop, col_voice = st.columns([1, 1, 2])
+    with col_start:
+        if st.button("Start Session", use_container_width=True):
+            st.session_state["monitoring_active"] = True
+    with col_stop:
+        if st.button("Stop Session", use_container_width=True):
+            st.session_state["monitoring_active"] = False
+    with col_voice:
+        if st.button("Test Voice Alert", use_container_width=True):
+             voice_guidance.speak_now("break_reminder")
+
+    st.divider()
+
+    # 2. Only show the webcam interface if they clicked Start
+    if st.session_state.get("monitoring_active", False):
+        html_file_path = os.path.join(_ROOT, "frontend.html")
+        try:
+            with open(html_file_path, "r", encoding="utf-8") as f:
+                html_code = f.read()
+            # Inject the perfectly styled dashboard (height increased to fit everything)
+            components.html(html_code, height=650)
+        except FileNotFoundError:
+            st.error(f"Could not find `frontend.html` at `{html_file_path}`.")
+    else:
+        st.info("Click 'Start Session' to begin monitoring.")
 
 
 # Local fallback monitoring (cv2.VideoCapture) - Kept intact as requested!
