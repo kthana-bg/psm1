@@ -138,7 +138,7 @@ def build_status_heatmap(df: pd.DataFrame) -> go.Figure:
         df.set_index("datetime")[["eye_strained", "is_slouching", "health_score"]]
         .resample("5min")
         .mean()
-        .fillna(method="ffill")
+        .ffill()
         .reset_index()
     )
 
