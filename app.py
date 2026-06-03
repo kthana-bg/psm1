@@ -73,7 +73,7 @@ def init_session_state():
         "last_metric_save":         0,
         "processor":                None,
         "active_eye_model_name":    "Custom CNN",
-        "active_posture_model_name":"MediaPipe Pose (Rule-Based)",
+        "active_posture_model_name":"Custom LSTM/DNN",
         "captured_embedding":       None,
     }
     for key, value in defaults.items():
