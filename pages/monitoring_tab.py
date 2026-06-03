@@ -75,8 +75,8 @@ def render_metrics(result: FrameResult, eye_model_name: str, posture_model_name:
         f"""
         <div style="font-size:11px;color:#aaa;margin-top:10px;
                     background:#1e2130;border-radius:6px;padding:10px;">
-            <b>Eye model</b>: {eye_model_name}<br>
-            <b>Posture model</b>: {posture_model_name}<br>
+            <b>Eye model</b>: Custom CNN<br>
+            <b>Posture model</b>: Custom LTSM/DNN<br>
             Eye latency: {result.eye_latency_ms:.1f} ms<br>
             Posture latency: {result.posture_latency_ms:.1f} ms
         </div>
