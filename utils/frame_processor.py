@@ -1,28 +1,12 @@
-"""
-Frame processing pipeline.
-Compatible with MediaPipe 0.10+ (Tasks API).
-
-Architecture:
-  - Main thread  : Streamlit UI reads results
-  - Worker thread: captures frames, runs inference, writes shared result
-
-Performance optimisations applied:
-  - Camera opens at 320x240 (was 640x480) — halves pixel data per frame
-  - FRAME_SKIP raised to 5 (inference every 5th frame, display every frame)
-  - MediaPipe loaded once at startup, not per-frame
-  - cv2.VideoCapture buffer set to 1 to always read the freshest frame
-  - Frame is JPEG-compressed before passing to Streamlit (reduces data transfer)
-"""
-
 import threading
 import time
 import cv2
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Optional
-
-import sys
 import os
+import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from utils.eye_detection import (
@@ -75,8 +59,8 @@ class FrameResult:
 def compute_health_score(eye_status: str, posture_status: str) -> float:
     eye_score     = 50.0
     posture_score = 50.0
-    if eye_status    == "Strained":   eye_score     = 20.0
-    elif eye_status  == "Blinking":   eye_score     = 40.0
+    if eye_status     == "Strained":  eye_score     = 20.0
+    elif eye_status   == "Blinking":  eye_score     = 40.0
     if posture_status == "Slouching": posture_score = 20.0
     return eye_score + posture_score
 
@@ -96,74 +80,321 @@ def download_model(url: str, dest_path: str) -> bool:
         return False
 
 
+def load_mediapipe_landmarkers():
+    face_lm = None
+    pose_lm = None
+    try:
+        import mediapipe as mp
+        BaseOptions = mp.tasks.BaseOptions
+        vision      = mp.tasks.vision
+        RunningMode = vision.RunningMode
+
+        if download_model(FACE_MODEL_URL, FACE_MODEL_PATH):
+            face_opts = vision.FaceLandmarkerOptions(
+                base_options=BaseOptions(model_asset_path=FACE_MODEL_PATH),
+                running_mode=RunningMode.IMAGE,
+                num_faces=1,
+                min_face_detection_confidence=0.5,
+                min_face_presence_confidence=0.5,
+                min_tracking_confidence=0.5,
+                output_face_blendshapes=False,
+                output_facial_transformation_matrixes=False,
+            )
+            face_lm = vision.FaceLandmarker.create_from_options(face_opts)
+            print("FaceLandmarker loaded")
+
+        if download_model(POSE_MODEL_URL, POSE_MODEL_PATH):
+            pose_opts = vision.PoseLandmarkerOptions(
+                base_options=BaseOptions(model_asset_path=POSE_MODEL_PATH),
+                running_mode=RunningMode.IMAGE,
+                num_poses=1,
+                min_pose_detection_confidence=0.5,
+                min_pose_presence_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+            pose_lm = vision.PoseLandmarker.create_from_options(pose_opts)
+            print("PoseLandmarker loaded")
+
+    except Exception as e:
+        print(f"MediaPipe load error: {e}")
+
+    return face_lm, pose_lm
+
+
+def process_frame(
+    frame_bgr: np.ndarray,
+    face_landmarker,
+    pose_landmarker,
+    eye_model,
+    eye_model_name: str,
+    posture_model,
+    posture_model_name: str,
+    ear_consec_counter: int,
+) -> tuple:
+
+    import mediapipe as mp
+
+    result    = FrameResult()
+    result.timestamp = time.time()
+    h, w      = frame_bgr.shape[:2]
+
+    mp_image = mp.Image(
+        image_format=mp.ImageFormat.SRGB,
+        data=cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB),
+    )
+
+    # Eye Detection
+    eye_status    = "Unknown"
+    ear_val       = 0.0
+    eye_conf      = 0.0
+    eye_lat       = 0.0
+    face_detected = False
+
+    if face_landmarker is not None:
+        try:
+            face_result = face_landmarker.detect(mp_image)
+            if face_result.face_landmarks:
+                face_detected = True
+                landmarks_478 = face_result.face_landmarks[0]
+
+                class _LMProxy:
+                    def __init__(self, lms): self.landmark = lms
+                proxy = _LMProxy(landmarks_478)
+
+                left_eye, right_eye = extract_eye_landmarks(proxy, w, h)
+                ear_val = (calculate_ear(left_eye) + calculate_ear(right_eye)) / 2.0
+
+                eye_status, ear_consec_counter = classify_eye_status_by_ear(
+                    ear_val, ear_consec_counter
+                )
+
+                if (
+                    eye_model is not None
+                    and "Rule"      not in eye_model_name
+                    and "MediaPipe" not in eye_model_name
+                ):
+                    roi = get_eye_roi(frame_bgr, left_eye)
+                    if roi is not None:
+                        inf        = run_eye_model_inference(eye_model, roi, eye_model_name)
+                        eye_status = inf["label"]
+                        eye_conf   = inf["confidence"]
+                        eye_lat    = inf["latency_ms"]
+
+                draw_eye_landmarks(frame_bgr, left_eye, right_eye)
+
+        except Exception as e:
+            print(f"Face detection error: {e}")
+
+    # Posture Detection 
+    posture_status = "Unknown"
+    posture_angle  = 0.0
+    posture_conf   = 0.0
+    posture_lat    = 0.0
+
+    if pose_landmarker is not None:
+        try:
+            pose_result = pose_landmarker.detect(mp_image)
+            if pose_result.pose_landmarks:
+                lms = pose_result.pose_landmarks[0]
+
+                def to_px(idx):
+                    return (int(lms[idx].x * w), int(lms[idx].y * h))
+
+                lm_dict = {
+                    "nose":           to_px(0),
+                    "left_ear":       to_px(7),
+                    "right_ear":      to_px(8),
+                    "left_shoulder":  to_px(11),
+                    "right_shoulder": to_px(12),
+                }
+                ear_mid = (
+                    (lm_dict["left_ear"][0]  + lm_dict["right_ear"][0])  // 2,
+                    (lm_dict["left_ear"][1]  + lm_dict["right_ear"][1])  // 2,
+                )
+                shoulder_mid = (
+                    (lm_dict["left_shoulder"][0] + lm_dict["right_shoulder"][0]) // 2,
+                    (lm_dict["left_shoulder"][1] + lm_dict["right_shoulder"][1]) // 2,
+                )
+                posture_angle  = calculate_neck_tilt_angle(ear_mid, shoulder_mid)
+                posture_status = classify_posture_by_angle(posture_angle)
+
+                if (
+                    posture_model is not None
+                    and "Rule"      not in posture_model_name
+                    and "MediaPipe" not in posture_model_name
+                ):
+                    feat_vec       = extract_landmark_feature_vector(lm_dict)
+                    inf            = run_posture_model_inference(posture_model, feat_vec, posture_model_name)
+                    posture_status = inf["label"]
+                    posture_conf   = inf["confidence"]
+                    posture_lat    = inf["latency_ms"]
+
+                draw_posture_overlay(frame_bgr, lm_dict, posture_angle, posture_status)
+
+        except Exception as e:
+            print(f"Pose detection error: {e}")
+
+    health_score  = compute_health_score(eye_status, posture_status)
+    eye_color     = (0, 255, 0) if eye_status     == "Normal" else (0, 0, 255)
+    posture_color = (0, 255, 0) if posture_status == "Good"   else (0, 0, 255)
+
+    cv2.putText(frame_bgr, f"Eye: {eye_status}",
+                (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, eye_color, 2)
+    cv2.putText(frame_bgr, f"EAR: {ear_val:.3f}",
+                (10, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    cv2.putText(frame_bgr, f"Posture: {posture_status}",
+                (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, posture_color, 2)
+    cv2.putText(frame_bgr, f"Health: {health_score:.0f}/100",
+                (10, 93), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+
+    result.frame_bgr          = frame_bgr
+    result.eye_status         = eye_status
+    result.ear_value          = ear_val
+    result.eye_confidence     = eye_conf
+    result.eye_latency_ms     = eye_lat
+    result.posture_status     = posture_status
+    result.posture_angle      = posture_angle
+    result.posture_confidence = posture_conf
+    result.posture_latency_ms = posture_lat
+    result.health_score       = health_score
+    result.face_detected      = face_detected
+
+    return result, ear_consec_counter
+
+
+# WebRTC Video Transformer
+
+try:
+    from streamlit_webrtc import VideoTransformerBase
+    import av
+
+    class VisionMateTransformer(VideoTransformerBase):
+        """
+        Called by streamlit-webrtc for every frame received from the browser.
+        Runs inference and returns the annotated frame.
+        Stores the latest FrameResult in self.result for the metrics panel.
+        """
+
+        def __init__(self):
+            self.result:       FrameResult = FrameResult()
+            self._lock         = threading.Lock()
+            self._ear_consec   = 0
+            self._frame_count  = 0
+            self.FRAME_SKIP    = 5   # run inference every 5th frame
+
+            # Models injected from monitoring_tab after construction
+            self.face_landmarker  = None
+            self.pose_landmarker  = None
+            self.eye_model        = None
+            self.eye_model_name   = "MediaPipe EAR (Rule-Based)"
+            self.posture_model    = None
+            self.posture_model_name = "MediaPipe Pose (Rule-Based)"
+
+        def recv(self, frame: "av.VideoFrame") -> "av.VideoFrame":
+            # Convert WebRTC frame → numpy BGR
+            img_bgr = frame.to_ndarray(format="bgr24")
+            img_bgr = cv2.flip(img_bgr, 1)   # mirror
+
+            self._frame_count += 1
+
+            if self._frame_count % self.FRAME_SKIP == 0:
+                fr, self._ear_consec = process_frame(
+                    img_bgr,
+                    self.face_landmarker,
+                    self.pose_landmarker,
+                    self.eye_model,
+                    self.eye_model_name,
+                    self.posture_model,
+                    self.posture_model_name,
+                    self._ear_consec,
+                )
+                with self._lock:
+                    self.result = fr
+                img_bgr = fr.frame_bgr if fr.frame_bgr is not None else img_bgr
+            else:
+                # Still annotate frame with last known overlay text
+                with self._lock:
+                    last = self.result
+                eye_color     = (0, 255, 0) if last.eye_status     == "Normal" else (0, 0, 255)
+                posture_color = (0, 255, 0) if last.posture_status == "Good"   else (0, 0, 255)
+                cv2.putText(img_bgr, f"Eye: {last.eye_status}",
+                            (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, eye_color, 2)
+                cv2.putText(img_bgr, f"EAR: {last.ear_value:.3f}",
+                            (10, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.putText(img_bgr, f"Posture: {last.posture_status}",
+                            (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, posture_color, 2)
+                cv2.putText(img_bgr, f"Health: {last.health_score:.0f}/100",
+                            (10, 93), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+
+            # Convert back to WebRTC frame
+            return av.VideoFrame.from_ndarray(img_bgr, format="bgr24")
+
+        def get_result(self) -> FrameResult:
+            with self._lock:
+                return self.result
+
+    WEBRTC_AVAILABLE = True
+
+except ImportError:
+    WEBRTC_AVAILABLE = False
+    VisionMateTransformer = None
+
 class FrameProcessor:
     """
-    Manages background frame capture and inference.
-    Compatible with MediaPipe 0.10+ Tasks API.
+    Fallback for local development using cv2.VideoCapture.
+    On Streamlit Cloud use VisionMateTransformer via streamlit-webrtc.
     """
-
-    # Run inference every Nth frame — display every frame for smoothness
     FRAME_SKIP = 5
 
     def __init__(self):
         self._lock    = threading.Lock()
         self._result  = FrameResult()
         self._running = False
-        self._thread: Optional[threading.Thread] = None
-
-        self._face_landmarker = None
-        self._pose_landmarker = None
-
+        self._thread  = None
+        self._face_lm = None
+        self._pose_lm = None
         self._eye_model          = None
         self._eye_model_name     = "MediaPipe EAR (Rule-Based)"
         self._posture_model      = None
         self._posture_model_name = "MediaPipe Pose (Rule-Based)"
-
         self._ear_consec  = 0
         self._frame_count = 0
 
-    # ── Public API ─────────────────────────────────────────────
-
-    def set_eye_model(self, model, model_name: str):
+    def set_eye_model(self, model, name):
         with self._lock:
             self._eye_model      = model
-            self._eye_model_name = model_name
+            self._eye_model_name = name
 
-    def set_posture_model(self, model, model_name: str):
+    def set_posture_model(self, model, name):
         with self._lock:
             self._posture_model      = model
-            self._posture_model_name = model_name
+            self._posture_model_name = name
 
     def get_latest_result(self) -> FrameResult:
         with self._lock:
-            frame_copy = (
-                self._result.frame_bgr.copy()
-                if self._result.frame_bgr is not None else None
-            )
+            r = self._result
             return FrameResult(
-                frame_bgr          = frame_copy,
-                eye_status         = self._result.eye_status,
-                ear_value          = self._result.ear_value,
-                eye_confidence     = self._result.eye_confidence,
-                eye_latency_ms     = self._result.eye_latency_ms,
-                posture_status     = self._result.posture_status,
-                posture_angle      = self._result.posture_angle,
-                posture_confidence = self._result.posture_confidence,
-                posture_latency_ms = self._result.posture_latency_ms,
-                health_score       = self._result.health_score,
-                face_detected      = self._result.face_detected,
-                timestamp          = self._result.timestamp,
+                frame_bgr          = r.frame_bgr.copy() if r.frame_bgr is not None else None,
+                eye_status         = r.eye_status,
+                ear_value          = r.ear_value,
+                eye_confidence     = r.eye_confidence,
+                eye_latency_ms     = r.eye_latency_ms,
+                posture_status     = r.posture_status,
+                posture_angle      = r.posture_angle,
+                posture_confidence = r.posture_confidence,
+                posture_latency_ms = r.posture_latency_ms,
+                health_score       = r.health_score,
+                face_detected      = r.face_detected,
+                timestamp          = r.timestamp,
             )
 
     def start(self, camera_index: int = 0):
         if self._running:
             return
-        self._load_mediapipe()
+        self._face_lm, self._pose_lm = load_mediapipe_landmarkers()
         self._running = True
         self._thread  = threading.Thread(
-            target=self._capture_loop,
-            args=(camera_index,),
-            daemon=True,
+            target=self._loop, args=(camera_index,), daemon=True
         )
         self._thread.start()
 
@@ -172,217 +403,34 @@ class FrameProcessor:
         if self._thread:
             self._thread.join(timeout=3.0)
 
-    # ── MediaPipe loader ───────────────────────────────────────
-
-    def _load_mediapipe(self):
-        try:
-            import mediapipe as mp
-            BaseOptions = mp.tasks.BaseOptions
-            vision      = mp.tasks.vision
-            RunningMode = vision.RunningMode
-
-            if download_model(FACE_MODEL_URL, FACE_MODEL_PATH):
-                face_opts = vision.FaceLandmarkerOptions(
-                    base_options=BaseOptions(model_asset_path=FACE_MODEL_PATH),
-                    running_mode=RunningMode.IMAGE,
-                    num_faces=1,
-                    min_face_detection_confidence=0.5,
-                    min_face_presence_confidence=0.5,
-                    min_tracking_confidence=0.5,
-                    output_face_blendshapes=False,
-                    output_facial_transformation_matrixes=False,
-                )
-                self._face_landmarker = vision.FaceLandmarker.create_from_options(face_opts)
-                print("FaceLandmarker loaded")
-
-            if download_model(POSE_MODEL_URL, POSE_MODEL_PATH):
-                pose_opts = vision.PoseLandmarkerOptions(
-                    base_options=BaseOptions(model_asset_path=POSE_MODEL_PATH),
-                    running_mode=RunningMode.IMAGE,
-                    num_poses=1,
-                    min_pose_detection_confidence=0.5,
-                    min_pose_presence_confidence=0.5,
-                    min_tracking_confidence=0.5,
-                )
-                self._pose_landmarker = vision.PoseLandmarker.create_from_options(pose_opts)
-                print("PoseLandmarker loaded")
-
-        except Exception as e:
-            print(f"MediaPipe load error: {e}")
-
-    # ── Background capture loop ────────────────────────────────
-
-    def _capture_loop(self, camera_index: int):
+    def _loop(self, camera_index):
         cap = cv2.VideoCapture(camera_index)
-
-        # ── PERFORMANCE: smaller resolution = faster per-frame processing ──
         cap.set(cv2.CAP_PROP_FRAME_WIDTH,  320)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
         cap.set(cv2.CAP_PROP_FPS,          30)
-        # ── PERFORMANCE: buffer=1 so we always get the freshest frame ──────
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
+        cap.set(cv2.CAP_PROP_BUFFERSIZE,   1)
         if not cap.isOpened():
             self._running = False
             return
-
         while self._running:
             ret, frame = cap.read()
             if not ret:
                 time.sleep(0.02)
                 continue
-
             self._frame_count += 1
             frame = cv2.flip(frame, 1)
-
             if self._frame_count % self.FRAME_SKIP == 0:
-                result = self._process_frame(frame)
+                fr, self._ear_consec = process_frame(
+                    frame,
+                    self._face_lm, self._pose_lm,
+                    self._eye_model, self._eye_model_name,
+                    self._posture_model, self._posture_model_name,
+                    self._ear_consec,
+                )
                 with self._lock:
-                    self._result = result
+                    self._result = fr
             else:
-                # Update displayed frame without re-running inference
                 with self._lock:
                     if self._result.frame_bgr is not None:
                         self._result.frame_bgr = frame
-
         cap.release()
-
-    # ── Per-frame inference ────────────────────────────────────
-
-    def _process_frame(self, frame: np.ndarray) -> FrameResult:
-        import mediapipe as mp
-
-        result        = FrameResult()
-        result.timestamp = time.time()
-        h, w          = frame.shape[:2]
-
-        mp_image = mp.Image(
-            image_format=mp.ImageFormat.SRGB,
-            data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB),
-        )
-
-        # ── Eye Detection ──────────────────────────────────────
-        eye_status    = "Unknown"
-        ear_val       = 0.0
-        eye_conf      = 0.0
-        eye_lat       = 0.0
-        face_detected = False
-
-        if self._face_landmarker is not None:
-            try:
-                face_result = self._face_landmarker.detect(mp_image)
-
-                if face_result.face_landmarks:
-                    face_detected    = True
-                    landmarks_478    = face_result.face_landmarks[0]
-
-                    class _LMProxy:
-                        def __init__(self, lms): self.landmark = lms
-                    proxy = _LMProxy(landmarks_478)
-
-                    left_eye, right_eye = extract_eye_landmarks(proxy, w, h)
-                    left_ear  = calculate_ear(left_eye)
-                    right_ear = calculate_ear(right_eye)
-                    ear_val   = (left_ear + right_ear) / 2.0
-
-                    eye_status, self._ear_consec = classify_eye_status_by_ear(
-                        ear_val, self._ear_consec
-                    )
-
-                    eye_model_name = self._eye_model_name
-                    if (
-                        self._eye_model is not None
-                        and "Rule"      not in eye_model_name
-                        and "MediaPipe" not in eye_model_name
-                    ):
-                        roi = get_eye_roi(frame, left_eye)
-                        if roi is not None:
-                            inf        = run_eye_model_inference(self._eye_model, roi, eye_model_name)
-                            eye_status = inf["label"]
-                            eye_conf   = inf["confidence"]
-                            eye_lat    = inf["latency_ms"]
-
-                    draw_eye_landmarks(frame, left_eye, right_eye)
-
-            except Exception as e:
-                print(f"Face detection error: {e}")
-
-        # ── Posture Detection ──────────────────────────────────
-        posture_status = "Unknown"
-        posture_angle  = 0.0
-        posture_conf   = 0.0
-        posture_lat    = 0.0
-
-        if self._pose_landmarker is not None:
-            try:
-                pose_result = self._pose_landmarker.detect(mp_image)
-
-                if pose_result.pose_landmarks:
-                    lms = pose_result.pose_landmarks[0]
-
-                    def to_px(idx):
-                        return (int(lms[idx].x * w), int(lms[idx].y * h))
-
-                    lm_dict = {
-                        "nose":           to_px(0),
-                        "left_ear":       to_px(7),
-                        "right_ear":      to_px(8),
-                        "left_shoulder":  to_px(11),
-                        "right_shoulder": to_px(12),
-                    }
-
-                    ear_mid = (
-                        (lm_dict["left_ear"][0]  + lm_dict["right_ear"][0])  // 2,
-                        (lm_dict["left_ear"][1]  + lm_dict["right_ear"][1])  // 2,
-                    )
-                    shoulder_mid = (
-                        (lm_dict["left_shoulder"][0] + lm_dict["right_shoulder"][0]) // 2,
-                        (lm_dict["left_shoulder"][1] + lm_dict["right_shoulder"][1]) // 2,
-                    )
-
-                    posture_angle  = calculate_neck_tilt_angle(ear_mid, shoulder_mid)
-                    posture_status = classify_posture_by_angle(posture_angle)
-
-                    posture_model_name = self._posture_model_name
-                    if (
-                        self._posture_model is not None
-                        and "Rule"      not in posture_model_name
-                        and "MediaPipe" not in posture_model_name
-                    ):
-                        feat_vec       = extract_landmark_feature_vector(lm_dict)
-                        inf            = run_posture_model_inference(self._posture_model, feat_vec, posture_model_name)
-                        posture_status = inf["label"]
-                        posture_conf   = inf["confidence"]
-                        posture_lat    = inf["latency_ms"]
-
-                    draw_posture_overlay(frame, lm_dict, posture_angle, posture_status)
-
-            except Exception as e:
-                print(f"Pose detection error: {e}")
-
-        # ── Health Score + overlay ─────────────────────────────
-        health_score  = compute_health_score(eye_status, posture_status)
-        eye_color     = (0, 255, 0) if eye_status     == "Normal" else (0, 0, 255)
-        posture_color = (0, 255, 0) if posture_status == "Good"   else (0, 0, 255)
-
-        cv2.putText(frame, f"Eye: {eye_status}",
-                    (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, eye_color, 2)
-        cv2.putText(frame, f"EAR: {ear_val:.3f}",
-                    (10, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        cv2.putText(frame, f"Posture: {posture_status}",
-                    (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, posture_color, 2)
-        cv2.putText(frame, f"Health: {health_score:.0f}/100",
-                    (10, 93), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-
-        result.frame_bgr          = frame
-        result.eye_status         = eye_status
-        result.ear_value          = ear_val
-        result.eye_confidence     = eye_conf
-        result.eye_latency_ms     = eye_lat
-        result.posture_status     = posture_status
-        result.posture_angle      = posture_angle
-        result.posture_confidence = posture_conf
-        result.posture_latency_ms = posture_lat
-        result.health_score       = health_score
-        result.face_detected      = face_detected
-        return result
