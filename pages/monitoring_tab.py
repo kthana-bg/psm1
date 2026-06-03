@@ -355,5 +355,5 @@ def _render_local_monitoring(processor, eye_model_name, posture_model_name, user
             )
             st.session_state["last_metric_save"] = time.time()
 
-    time.sleep(0.3)
-    st.rerun()
+    #time.sleep(0.3)
+    #st.rerun()
