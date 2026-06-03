@@ -3,7 +3,7 @@ opencv-python-headless==4.9.0.80
 mediapipe>=0.10.30
 tensorflow-cpu==2.15.0
 tf-keras
-streamlit-webrtc==0.47.9
+streamlit-webrtc==0.47.0
 av
 numpy
 pandas
