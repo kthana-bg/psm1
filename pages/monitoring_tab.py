@@ -53,7 +53,7 @@ def metric_card(label: str, value: str, color: str, sub_text: str = ""):
 
 
 def render_metrics(result: FrameResult, eye_model_name: str, posture_model_name: str):
-    """Render the right-hand metrics panel from a FrameResult."""
+    #Render the right-hand metrics panel from a FrameResult.
     metric_card(
         "Health Score",
         f"{result.health_score:.0f} / 100",
@@ -120,7 +120,6 @@ def render_monitoring_tab(
 
 
 # Webrtc monitoring (cloud)
-
 def _render_webrtc_monitoring(eye_model_name, posture_model_name, user_id):
     from streamlit_webrtc import webrtc_streamer, WebRtcMode
     import streamlit as st
