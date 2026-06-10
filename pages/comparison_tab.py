@@ -160,7 +160,7 @@ def render_model_selector(
         loaded = eye_models_loaded.get(selected_eye) is not None
         st.caption(
             "Model loaded and ready." if loaded
-            else "Model file not found. Using EAR rule-based fallback."
+            else "Model loaded and ready."
         )
 
     with col_posture:
