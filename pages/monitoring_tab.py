@@ -69,8 +69,8 @@ def render_metrics(result: FrameResult, eye_model_name: str, posture_model_name:
         f"""
         <div style="font-size:11px;color:#aaa;margin-top:10px;
                     background:#1e2130;border-radius:6px;padding:10px;">
-            <b>Eye model</b>: Custom CNN<br>
-            <b>Posture model</b>: Custom LTSM/DNN<br>
+            <b>Eye model</b>: {eye_model_name}<br>
+            <b>Posture model</b>: {posture_model_name}<br>
             Eye latency: {result.eye_latency_ms:.1f} ms<br>
             Posture latency: {result.posture_latency_ms:.1f} ms
         </div>
@@ -100,10 +100,10 @@ def render_monitoring_tab(
 ):
     st.header("Live Monitoring")
 
-    _render_client_side_monitoring()
+    _render_client_side_monitoring(eye_model_name, posture_model_name)
 
 
-def _render_client_side_monitoring():
+def _render_client_side_monitoring(eye_model_name: str = "Custom CNN", posture_model_name: str = "Custom LSTM/DNN"):
     # 1. Bring back the exact Streamlit button layout for the top bar
     col_start, col_stop, col_voice = st.columns([1, 1, 2])
     with col_start:
@@ -124,6 +124,8 @@ def _render_client_side_monitoring():
         try:
             with open(html_file_path, "r", encoding="utf-8") as f:
                 html_code = f.read()
+            html_code = html_code.replace("Custom CNN", eye_model_name, 1)
+            html_code = html_code.replace("Custom LSTM/DNN", posture_model_name, 1)
             # Inject the perfectly styled dashboard (height increased to fit everything)
             components.html(html_code, height=650)
         except FileNotFoundError:
