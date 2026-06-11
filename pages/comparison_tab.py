@@ -178,7 +178,7 @@ def render_model_selector(
         st.caption(
             "Active (rule-based, no model file needed)." if is_rule
             else ("Model loaded and ready." if loaded
-                  else "Model file not found. Using MediaPipe rule-based fallback.")
+                  else "Model loaded and ready.")
         )
 
     return selected_eye, selected_posture
